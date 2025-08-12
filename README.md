@@ -1,4 +1,4 @@
-# likn-lang-compiler
+# Likn Lang Compiler
 
 Um compilador simples para a linguagem experimental **Likn**, escrito em Rust. Ele converte arquivos `.ikn` em código Rust, compila e gera um binário executável.
 
