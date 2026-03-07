@@ -361,6 +361,34 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
                 arity_error_expr(name, 1, args_code.len())
             }
         }
+        "str.upper" => {
+            if args_code.len() == 1 {
+                format!("({}).to_uppercase()", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "str.lower" => {
+            if args_code.len() == 1 {
+                format!("({}).to_lowercase()", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "str.contains" => {
+            if args_code.len() == 2 {
+                format!("({}).contains(&{})", args_code[0], args_code[1])
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "str.len" => {
+            if args_code.len() == 1 {
+                format!("({}).chars().count()", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
         "panic" => {
             if args_code.len() == 1 {
                 format!("panic!(\"{{}}\", {})", args_code[0])

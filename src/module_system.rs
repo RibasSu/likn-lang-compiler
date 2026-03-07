@@ -429,7 +429,11 @@ impl ModuleLoader {
         span: Span,
         name: &str,
     ) -> Result<String, CompileError> {
-        if name == "panic" || name.starts_with("term.") || name.starts_with("fs.") {
+        if name == "panic"
+            || name.starts_with("term.")
+            || name.starts_with("fs.")
+            || name.starts_with("str.")
+        {
             return Ok(name.to_string());
         }
 

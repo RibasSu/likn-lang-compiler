@@ -200,6 +200,47 @@ term.println(nome)
 }
 
 #[test]
+fn cli_stdlib_text_functions_work() {
+    let source = unique_path("ikn");
+    let output = unique_path("bin");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+let up = str.upper("Likn")
+let low = str.lower("LIKN")
+let has = str.contains(up, "IK")
+let size = str.len(low)
+print(up)
+print(low)
+print(has)
+print(size)
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(
+        compile.status.success(),
+        "compiler should accept text stdlib calls"
+    );
+
+    let run = Command::new(&output).output().expect("run compiled binary");
+    assert!(run.status.success(), "binary should execute");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(stdout.contains("LIKN"), "upper should work");
+    assert!(stdout.contains("likn"), "lower should work");
+    assert!(stdout.contains("true"), "contains should work");
+    assert!(stdout.contains("4"), "len should work");
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}
+
+#[test]
 fn cli_rejects_mixed_numeric_and_bool() {
     let source = unique_path("ikn");
     fs::write(&source, "print(1 + true)").expect("write source");

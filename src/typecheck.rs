@@ -709,6 +709,26 @@ impl TypeChecker {
                 self.expect_string_like(path, args[0].span, "fs.exists espera caminho string")?;
                 Ok(Type::Bool)
             }
+            "str.upper" | "str.lower" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "função de texto espera string")?;
+                Ok(Type::String)
+            }
+            "str.contains" => {
+                self.expect_arity(name, args, 2, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "o texto base deve ser string")?;
+                let needle = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(needle, args[1].span, "o trecho buscado deve ser string")?;
+                Ok(Type::Bool)
+            }
+            "str.len" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "str.len espera string")?;
+                Ok(Type::Usize)
+            }
             "panic" => {
                 self.expect_arity(name, args, 1, span)?;
                 let _ = self.infer_expr(&args[0], env)?;

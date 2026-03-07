@@ -171,6 +171,25 @@ mod tests {
     }
 
     #[test]
+    fn text_stdlib_calls_codegen_and_typecheck() {
+        let src = r#"
+            let up = str.upper("Likn")
+            let low = str.lower("Likn")
+            let has = str.contains(up, "IK")
+            let size = str.len(low)
+            print(has)
+            print(size)
+        "#;
+        let ast = parse_source(src).expect("deve fazer parse");
+        let types = check_program(&ast).expect("deve tipar");
+        let compiled = compile_program(&ast, BuildTarget::Native, &types);
+        assert!(compiled.contains("String::from(\"Likn\")).to_uppercase()"));
+        assert!(compiled.contains("String::from(\"Likn\")).to_lowercase()"));
+        assert!(compiled.contains("(up).contains(&String::from(\"IK\"))"));
+        assert!(compiled.contains("(low).chars().count()"));
+    }
+
+    #[test]
     fn term_input_and_output_codegen() {
         let src = r#"
             let nome = term.input("Nome: ")
