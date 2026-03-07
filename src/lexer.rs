@@ -1,0 +1,250 @@
+use crate::error::CompileError;
+use crate::token::{Token, TokenKind};
+
+pub struct Lexer<'a> {
+    _src: &'a str,
+    chars: Vec<char>,
+    pos: usize,
+    line: usize,
+    column: usize,
+}
+
+impl<'a> Lexer<'a> {
+    pub fn new(src: &'a str) -> Self {
+        Self {
+            _src: src,
+            chars: src.chars().collect(),
+            pos: 0,
+            line: 1,
+            column: 1,
+        }
+    }
+
+    pub fn lex(mut self) -> Result<Vec<Token>, CompileError> {
+        let mut tokens = Vec::new();
+
+        while let Some(ch) = self.peek_char() {
+            if ch.is_whitespace() {
+                self.consume_whitespace();
+                continue;
+            }
+
+            if ch == '/' && self.peek_next_char() == Some('/') {
+                self.consume_comment();
+                continue;
+            }
+
+            if ch.is_ascii_digit() {
+                tokens.push(self.lex_number()?);
+                continue;
+            }
+
+            if ch == '"' {
+                tokens.push(self.lex_string()?);
+                continue;
+            }
+
+            if is_ident_start(ch) {
+                tokens.push(self.lex_ident());
+                continue;
+            }
+
+            tokens.push(self.lex_symbol()?);
+        }
+
+        tokens.push(Token {
+            kind: TokenKind::Eof,
+            lexeme: String::new(),
+            line: self.line,
+            column: self.column,
+        });
+
+        Ok(tokens)
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
+
+    fn peek_next_char(&self) -> Option<char> {
+        self.chars.get(self.pos + 1).copied()
+    }
+
+    fn advance_char(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.pos += 1;
+
+        if ch == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+
+        Some(ch)
+    }
+
+    fn consume_whitespace(&mut self) {
+        while matches!(self.peek_char(), Some(ch) if ch.is_whitespace()) {
+            let _ = self.advance_char();
+        }
+    }
+
+    fn consume_comment(&mut self) {
+        while let Some(ch) = self.peek_char() {
+            let _ = self.advance_char();
+            if ch == '\n' {
+                break;
+            }
+        }
+    }
+
+    pub fn lex_number(&mut self) -> Result<Token, CompileError> {
+        let start_line = self.line;
+        let start_column = self.column;
+        let mut number = String::new();
+
+        while matches!(self.peek_char(), Some(ch) if ch.is_ascii_digit()) {
+            if let Some(ch) = self.advance_char() {
+                number.push(ch);
+            }
+        }
+
+        if number.parse::<i64>().is_err() {
+            return Err(CompileError::new(
+                format!("inteiro inválido: {number}"),
+                start_line,
+                start_column,
+            ));
+        }
+
+        Ok(Token {
+            kind: TokenKind::Number,
+            lexeme: number,
+            line: start_line,
+            column: start_column,
+        })
+    }
+
+    pub fn lex_string(&mut self) -> Result<Token, CompileError> {
+        let start_line = self.line;
+        let start_column = self.column;
+        let mut out = String::new();
+
+        // opening quote
+        let _ = self.advance_char();
+
+        while let Some(ch) = self.peek_char() {
+            if ch == '"' {
+                let _ = self.advance_char();
+                return Ok(Token {
+                    kind: TokenKind::String,
+                    lexeme: out,
+                    line: start_line,
+                    column: start_column,
+                });
+            }
+
+            if ch == '\\' {
+                let _ = self.advance_char();
+                let escaped = self.advance_char().ok_or_else(|| {
+                    CompileError::new("escape incompleto em string", start_line, start_column)
+                })?;
+                let mapped = match escaped {
+                    'n' => '\n',
+                    't' => '\t',
+                    '"' => '"',
+                    '\\' => '\\',
+                    other => {
+                        return Err(CompileError::new(
+                            format!("escape inválido: \\{other}"),
+                            self.line,
+                            self.column.saturating_sub(1),
+                        ));
+                    }
+                };
+                out.push(mapped);
+                continue;
+            }
+
+            out.push(ch);
+            let _ = self.advance_char();
+        }
+
+        Err(CompileError::new(
+            "string não terminada",
+            start_line,
+            start_column,
+        ))
+    }
+
+    pub fn lex_ident(&mut self) -> Token {
+        let start_line = self.line;
+        let start_column = self.column;
+        let mut ident = String::new();
+
+        while matches!(self.peek_char(), Some(ch) if is_ident_part(ch)) {
+            if let Some(ch) = self.advance_char() {
+                ident.push(ch);
+            }
+        }
+
+        Token {
+            kind: TokenKind::Ident,
+            lexeme: ident,
+            line: start_line,
+            column: start_column,
+        }
+    }
+
+    pub fn lex_symbol(&mut self) -> Result<Token, CompileError> {
+        let start_line = self.line;
+        let start_column = self.column;
+        let first = self
+            .advance_char()
+            .ok_or_else(|| CompileError::new("fim inesperado", start_line, start_column))?;
+
+        let two_char = match (first, self.peek_char()) {
+            ('=', Some('=')) => Some("=="),
+            ('!', Some('=')) => Some("!="),
+            ('>', Some('=')) => Some(">="),
+            ('<', Some('=')) => Some("<="),
+            ('&', Some('&')) => Some("&&"),
+            ('|', Some('|')) => Some("||"),
+            _ => None,
+        };
+
+        if let Some(op) = two_char {
+            let _ = self.advance_char();
+            return Ok(Token {
+                kind: TokenKind::Symbol,
+                lexeme: op.to_string(),
+                line: start_line,
+                column: start_column,
+            });
+        }
+
+        if "(){}.,;+*/-%!=<>".contains(first) {
+            return Ok(Token {
+                kind: TokenKind::Symbol,
+                lexeme: first.to_string(),
+                line: start_line,
+                column: start_column,
+            });
+        }
+
+        Err(CompileError::new(
+            format!("símbolo inesperado: {first}"),
+            start_line,
+            start_column,
+        ))
+    }
+}
+
+fn is_ident_start(ch: char) -> bool {
+    ch.is_ascii_alphabetic() || ch == '_'
+}
+
+fn is_ident_part(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
+}
