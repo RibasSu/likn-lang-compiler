@@ -628,18 +628,156 @@ fn precedence(op: &str) -> u8 {
     }
 }
 
-fn compile_program(ast: &[Stmt]) -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuildTarget {
+    Native,
+    Web,
+}
+
+impl BuildTarget {
+    fn from_cli(value: &str) -> Option<Self> {
+        match value {
+            "native" => Some(Self::Native),
+            "web" | "wasm" => Some(Self::Web),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            BuildTarget::Native => "native",
+            BuildTarget::Web => "web",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BuildProfile {
+    Dev,
+    Fast,
+}
+
+impl BuildProfile {
+    fn from_cli(value: &str) -> Option<Self> {
+        match value {
+            "dev" => Some(Self::Dev),
+            "fast" => Some(Self::Fast),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            BuildProfile::Dev => "dev",
+            BuildProfile::Fast => "fast",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CliOptions {
+    input: String,
+    output: Option<String>,
+    target: BuildTarget,
+    profile: BuildProfile,
+    emit_rust: bool,
+}
+
+#[derive(Debug, Clone)]
+struct CompilationArtifacts {
+    rust_file: String,
+    output_file: String,
+}
+
+fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
+    let mut input: Option<String> = None;
+    let mut output: Option<String> = None;
+    let mut target = BuildTarget::Native;
+    let mut profile = BuildProfile::Dev;
+    let mut emit_rust = true;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--target" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("faltou valor para --target".to_string());
+                };
+                target = BuildTarget::from_cli(value)
+                    .ok_or_else(|| format!("target inválido: '{value}' (use native ou web)"))?;
+            }
+            "--profile" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("faltou valor para --profile".to_string());
+                };
+                profile = BuildProfile::from_cli(value)
+                    .ok_or_else(|| format!("profile inválido: '{value}' (use dev ou fast)"))?;
+            }
+            "--output" | "-o" => {
+                i += 1;
+                let Some(value) = args.get(i) else {
+                    return Err("faltou valor para --output".to_string());
+                };
+                output = Some(value.clone());
+            }
+            "--web" => {
+                target = BuildTarget::Web;
+            }
+            "--fast" => {
+                profile = BuildProfile::Fast;
+            }
+            "--no-emit-rust" => {
+                emit_rust = false;
+            }
+            "--help" | "-h" => {}
+            option if option.starts_with('-') => {
+                return Err(format!("flag desconhecida: '{option}'"));
+            }
+            path => {
+                if input.is_some() {
+                    return Err(format!(
+                        "apenas um arquivo de entrada é suportado, valor extra: '{path}'"
+                    ));
+                }
+                input = Some(path.to_string());
+            }
+        }
+        i += 1;
+    }
+
+    let input = input.ok_or_else(|| "faltou informar o arquivo .ikn".to_string())?;
+    Ok(CliOptions {
+        input,
+        output,
+        target,
+        profile,
+        emit_rust,
+    })
+}
+
+fn compile_program(ast: &[Stmt], target: BuildTarget) -> String {
     let mut functions = Vec::new();
     let mut main_stmts = Vec::new();
 
     for stmt in ast {
         match stmt {
-            Stmt::Func(_, _, _) => functions.push(compile_stmt(stmt)),
-            _ => main_stmts.push(compile_stmt(stmt)),
+            Stmt::Func(_, _, _) => functions.push(compile_stmt(stmt, target)),
+            _ => main_stmts.push(compile_stmt(stmt, target)),
         }
     }
 
     let mut rust_code = String::new();
+
+    if target == BuildTarget::Web {
+        rust_code.push_str(
+            "#[cfg(target_arch = \"wasm32\")]\nextern \"C\" {\n    fn likn_console_log(ptr: *const u8, len: usize);\n}\n\n",
+        );
+        rust_code.push_str(
+            "fn likn_print<T: std::fmt::Display>(value: T) {\n    #[cfg(target_arch = \"wasm32\")]\n    {\n        let rendered = value.to_string();\n        unsafe {\n            likn_console_log(rendered.as_ptr(), rendered.len());\n        }\n    }\n    #[cfg(not(target_arch = \"wasm32\"))]\n    {\n        println!(\"{}\", value);\n    }\n}\n\n",
+        );
+    }
 
     for func in functions {
         rust_code.push_str(&func);
@@ -647,7 +785,18 @@ fn compile_program(ast: &[Stmt]) -> String {
         rust_code.push('\n');
     }
 
-    rust_code.push_str("fn __likn_entry() -> i64 {\n");
+    let entry_name = if target == BuildTarget::Web {
+        "likn_main"
+    } else {
+        "__likn_entry"
+    };
+
+    if target == BuildTarget::Web {
+        rust_code.push_str("#[no_mangle]\n");
+        rust_code.push_str("pub extern \"C\" ");
+    }
+
+    rust_code.push_str(&format!("fn {entry_name}() -> i64 {{\n"));
     for stmt in main_stmts {
         rust_code.push_str("    ");
         rust_code.push_str(&stmt.replace('\n', "\n    "));
@@ -655,26 +804,33 @@ fn compile_program(ast: &[Stmt]) -> String {
     }
     rust_code.push_str("    0\n}\n\n");
 
-    rust_code.push_str("fn main() {\n");
-    rust_code.push_str("    let _ = __likn_entry();\n");
-    rust_code.push_str("}\n");
+    if target == BuildTarget::Native {
+        rust_code.push_str("fn main() {\n");
+        rust_code.push_str("    let _ = __likn_entry();\n");
+        rust_code.push_str("}\n");
+    } else {
+        rust_code.push_str("#[cfg(not(target_arch = \"wasm32\"))]\n");
+        rust_code.push_str("fn main() {\n");
+        rust_code.push_str("    let _ = likn_main();\n");
+        rust_code.push_str("}\n");
+    }
 
     rust_code
 }
 
-fn compile_stmt(stmt: &Stmt) -> String {
+fn compile_stmt(stmt: &Stmt, target: BuildTarget) -> String {
     match stmt {
         Stmt::Let(name, expr) => format!("let mut {name} = {};", compile_expr(expr)),
         Stmt::Expr(expr) => format!("{};", compile_expr(expr)),
         Stmt::If(cond, then_block, else_block) => {
             let then_code = then_block
                 .iter()
-                .map(compile_stmt)
+                .map(|stmt| compile_stmt(stmt, target))
                 .collect::<Vec<_>>()
                 .join("\n");
             let else_code = else_block
                 .iter()
-                .map(compile_stmt)
+                .map(|stmt| compile_stmt(stmt, target))
                 .collect::<Vec<_>>()
                 .join("\n");
 
@@ -700,14 +856,24 @@ fn compile_stmt(stmt: &Stmt) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let body_code = body.iter().map(compile_stmt).collect::<Vec<_>>().join("\n");
+            let body_code = body
+                .iter()
+                .map(|stmt| compile_stmt(stmt, target))
+                .collect::<Vec<_>>()
+                .join("\n");
             format!(
                 "fn {name}({params_code}) -> i64 {{\n{}\n    0\n}}",
                 indent_block(&body_code, 1)
             )
         }
         Stmt::Return(expr) => format!("return {};", compile_expr(expr)),
-        Stmt::Print(expr) => format!("println!(\"{{}}\", {});", compile_expr(expr)),
+        Stmt::Print(expr) => {
+            if target == BuildTarget::Web {
+                format!("likn_print({});", compile_expr(expr))
+            } else {
+                format!("println!(\"{{}}\", {});", compile_expr(expr))
+            }
+        }
     }
 }
 
@@ -755,21 +921,75 @@ fn parse_source(src: &str) -> Result<Vec<Stmt>, CompileError> {
     parser.parse_program()
 }
 
-fn compile_file(filename: &str) -> Result<(String, String), CompileError> {
-    let src = fs::read_to_string(filename).map_err(|err| {
-        CompileError::new(format!("falha ao ler arquivo {filename}: {err}"), 1, 1)
+fn add_profile_flags(command: &mut Command, target: BuildTarget, profile: BuildProfile) {
+    match profile {
+        BuildProfile::Dev => {
+            if target == BuildTarget::Web {
+                command.args(["-C", "opt-level=2"]);
+            }
+        }
+        BuildProfile::Fast => {
+            if target == BuildTarget::Web {
+                command.args([
+                    "-C",
+                    "opt-level=z",
+                    "-C",
+                    "lto=fat",
+                    "-C",
+                    "codegen-units=1",
+                    "-C",
+                    "panic=abort",
+                    "-C",
+                    "strip=symbols",
+                ]);
+            } else {
+                command.args([
+                    "-C",
+                    "opt-level=3",
+                    "-C",
+                    "lto=fat",
+                    "-C",
+                    "codegen-units=1",
+                    "-C",
+                    "panic=abort",
+                    "-C",
+                    "target-cpu=native",
+                ]);
+            }
+        }
+    }
+}
+
+fn default_output(stem: &str, target: BuildTarget) -> String {
+    if target == BuildTarget::Web {
+        format!("{stem}.wasm")
+    } else {
+        stem.to_string()
+    }
+}
+
+fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, CompileError> {
+    let src = fs::read_to_string(&options.input).map_err(|err| {
+        CompileError::new(
+            format!("falha ao ler arquivo {}: {err}", options.input),
+            1,
+            1,
+        )
     })?;
 
     let ast = parse_source(&src)?;
 
-    let stem = Path::new(filename)
+    let stem = Path::new(&options.input)
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("output");
 
     let rust_file = format!("{stem}.rs");
-    let bin_file = stem.to_string();
-    let rust_code = compile_program(&ast);
+    let output_file = options
+        .output
+        .clone()
+        .unwrap_or_else(|| default_output(stem, options.target));
+    let rust_code = compile_program(&ast, options.target);
 
     fs::write(&rust_file, rust_code).map_err(|err| {
         CompileError::new(
@@ -779,33 +999,61 @@ fn compile_file(filename: &str) -> Result<(String, String), CompileError> {
         )
     })?;
 
-    let output = Command::new("rustc")
-        .arg(&rust_file)
-        .arg("-o")
-        .arg(&bin_file)
+    let mut command = Command::new("rustc");
+    command.arg(&rust_file);
+    if options.target == BuildTarget::Web {
+        command.args([
+            "--target",
+            "wasm32-unknown-unknown",
+            "--crate-type",
+            "cdylib",
+        ]);
+    }
+    command.arg("-o").arg(&output_file);
+    add_profile_flags(&mut command, options.target, options.profile);
+
+    let output = command
         .output()
         .map_err(|err| CompileError::new(format!("falha ao executar rustc: {err}"), 1, 1))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CompileError::new(
-            format!("erro ao compilar {rust_file}: {stderr}"),
-            1,
-            1,
-        ));
+        let mut message = format!("erro ao compilar {rust_file}: {stderr}");
+        if options.target == BuildTarget::Web
+            && stderr.contains("wasm32-unknown-unknown")
+            && stderr.contains("can't find crate")
+        {
+            message.push_str(
+                "\nDica: instale o alvo WebAssembly com `rustup target add wasm32-unknown-unknown`.",
+            );
+        }
+        return Err(CompileError::new(message, 1, 1));
     }
 
-    Ok((rust_file, bin_file))
+    if !options.emit_rust {
+        let _ = fs::remove_file(&rust_file);
+    }
+
+    Ok(CompilationArtifacts {
+        rust_file,
+        output_file,
+    })
 }
 
 fn print_help(bin: &str) {
     println!("Likn Lang Compiler");
     println!();
     println!("Uso:");
-    println!("  {bin} <arquivo.ikn>");
+    println!("  {bin} [FLAGS] <arquivo.ikn>");
     println!();
     println!("Flags:");
-    println!("  --help      Exibe esta ajuda");
+    println!("  --help, -h            Exibe esta ajuda");
+    println!("  --target <native|web> Define o alvo de build");
+    println!("  --web                 Atalho para --target web");
+    println!("  --profile <dev|fast>  Define o perfil de otimização");
+    println!("  --fast                Atalho para --profile fast");
+    println!("  --output, -o <path>   Define o arquivo de saída");
+    println!("  --no-emit-rust        Não mantém o .rs gerado");
 }
 
 fn main() {
@@ -821,12 +1069,26 @@ fn main() {
         return;
     }
 
-    let filename = &args[1];
+    let options = match parse_cli(&args) {
+        Ok(options) => options,
+        Err(err) => {
+            eprintln!("Erro: {err}");
+            eprintln!("Use --help para ver as opções.");
+            std::process::exit(1);
+        }
+    };
 
-    match compile_file(filename) {
-        Ok((rust_file, bin_file)) => {
-            println!("Arquivo Rust gerado: {rust_file}");
-            println!("Binário gerado: {bin_file}");
+    match compile_file(&options) {
+        Ok(artifacts) => {
+            if options.emit_rust {
+                println!("Arquivo Rust gerado: {}", artifacts.rust_file);
+            }
+            println!("Artefato final: {}", artifacts.output_file);
+            println!(
+                "Build concluído (target={}, profile={})",
+                options.target.as_str(),
+                options.profile.as_str()
+            );
         }
         Err(err) => {
             eprintln!("{err}");
@@ -842,7 +1104,7 @@ mod tests {
     #[test]
     fn parse_respects_precedence() {
         let ast = parse_source("print 1 + 2 * 3").expect("deve fazer parse");
-        let compiled = compile_program(&ast);
+        let compiled = compile_program(&ast, BuildTarget::Native);
         assert!(compiled.contains("(1 + (2 * 3))"));
     }
 
@@ -855,7 +1117,7 @@ mod tests {
             print(soma(10, 5))
         "#;
         let ast = parse_source(src).expect("deve fazer parse");
-        let compiled = compile_program(&ast);
+        let compiled = compile_program(&ast, BuildTarget::Native);
         assert!(compiled.contains("fn soma(a: i64, b: i64) -> i64"));
         assert!(compiled.contains("soma(10, 5)"));
     }
@@ -863,7 +1125,7 @@ mod tests {
     #[test]
     fn lexer_supports_comparison_without_spaces() {
         let ast = parse_source("if 10>=5 { print \"ok\" }").expect("deve fazer parse");
-        let compiled = compile_program(&ast);
+        let compiled = compile_program(&ast, BuildTarget::Native);
         assert!(compiled.contains("(10 >= 5)"));
     }
 
@@ -871,5 +1133,27 @@ mod tests {
     fn parser_reports_unfinished_string() {
         let err = parse_source("print \"abc").expect_err("deve falhar");
         assert!(err.to_string().contains("string não terminada"));
+    }
+
+    #[test]
+    fn web_target_emits_wasm_entry_and_print_helper() {
+        let ast = parse_source("print \"ola\"").expect("deve fazer parse");
+        let compiled = compile_program(&ast, BuildTarget::Web);
+        assert!(compiled.contains("pub extern \"C\" fn likn_main() -> i64"));
+        assert!(compiled.contains("fn likn_print"));
+    }
+
+    #[test]
+    fn cli_parser_understands_web_fast_mode() {
+        let args = vec![
+            "likn".to_string(),
+            "--web".to_string(),
+            "--fast".to_string(),
+            "app.ikn".to_string(),
+        ];
+        let options = parse_cli(&args).expect("deve parsear argumentos");
+        assert_eq!(options.target, BuildTarget::Web);
+        assert_eq!(options.profile, BuildProfile::Fast);
+        assert_eq!(options.input, "app.ikn");
     }
 }
