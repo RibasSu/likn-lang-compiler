@@ -44,6 +44,11 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
+            if ch == '\'' {
+                tokens.push(self.lex_char()?);
+                continue;
+            }
+
             if is_ident_start(ch) {
                 tokens.push(self.lex_ident());
                 continue;
@@ -99,7 +104,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex_number(&mut self) -> Result<Token, CompileError> {
+    fn lex_number(&mut self) -> Result<Token, CompileError> {
         let start_line = self.line;
         let start_column = self.column;
         let mut number = String::new();
@@ -110,7 +115,28 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if number.parse::<i64>().is_err() {
+        if self.peek_char() == Some('.')
+            && matches!(self.peek_next_char(), Some(ch) if ch.is_ascii_digit())
+        {
+            if let Some(ch) = self.advance_char() {
+                number.push(ch);
+            }
+            while matches!(self.peek_char(), Some(ch) if ch.is_ascii_digit()) {
+                if let Some(ch) = self.advance_char() {
+                    number.push(ch);
+                }
+            }
+
+            if number.parse::<f64>().is_err() {
+                return Err(CompileError::new(
+                    format!("float inválido: {number}"),
+                    start_line,
+                    start_column,
+                )
+                .with_span(number.chars().count())
+                .with_label("literal float inválido"));
+            }
+        } else if number.parse::<i128>().is_err() {
             return Err(CompileError::new(
                 format!("inteiro inválido: {number}"),
                 start_line,
@@ -128,12 +154,11 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    pub fn lex_string(&mut self) -> Result<Token, CompileError> {
+    fn lex_string(&mut self) -> Result<Token, CompileError> {
         let start_line = self.line;
         let start_column = self.column;
         let mut out = String::new();
 
-        // opening quote
         let _ = self.advance_char();
 
         while let Some(ch) = self.peek_char() {
@@ -154,23 +179,11 @@ impl<'a> Lexer<'a> {
                         .with_label("sequência de escape inicia aqui")
                         .with_help("adicione o caractere do escape após '\\'")
                 })?;
-                let mapped = match escaped {
-                    'n' => '\n',
-                    't' => '\t',
-                    '"' => '"',
-                    '\\' => '\\',
-                    other => {
-                        return Err(CompileError::new(
-                            format!("escape inválido: \\{other}"),
-                            self.line,
-                            self.column.saturating_sub(1),
-                        )
-                        .with_span(2)
-                        .with_label("escape não reconhecido")
-                        .with_help("escapes válidos: \\n, \\t, \\\", \\\\"));
-                    }
-                };
-                out.push(mapped);
+                out.push(parse_escape(
+                    escaped,
+                    self.line,
+                    self.column.saturating_sub(1),
+                )?);
                 continue;
             }
 
@@ -185,7 +198,60 @@ impl<'a> Lexer<'a> {
         )
     }
 
-    pub fn lex_ident(&mut self) -> Token {
+    fn lex_char(&mut self) -> Result<Token, CompileError> {
+        let start_line = self.line;
+        let start_column = self.column;
+
+        let _ = self.advance_char();
+
+        let value = match self.peek_char() {
+            Some('\\') => {
+                let _ = self.advance_char();
+                let escaped = self.advance_char().ok_or_else(|| {
+                    CompileError::new("escape incompleto em char", start_line, start_column)
+                        .with_label("literal char começa aqui")
+                })?;
+                parse_escape(escaped, self.line, self.column.saturating_sub(1))?
+            }
+            Some('\'') => {
+                return Err(
+                    CompileError::new("literal char vazio", start_line, start_column)
+                        .with_label("adicione um caractere entre aspas simples"),
+                );
+            }
+            Some(ch) => {
+                let _ = self.advance_char();
+                ch
+            }
+            None => {
+                return Err(CompileError::new(
+                    "literal char não terminado",
+                    start_line,
+                    start_column,
+                )
+                .with_label("literal char começa aqui"));
+            }
+        };
+
+        if self.peek_char() != Some('\'') {
+            return Err(CompileError::new(
+                "literal char deve conter exatamente um caractere",
+                start_line,
+                start_column,
+            )
+            .with_label("feche com aspas simples"));
+        }
+        let _ = self.advance_char();
+
+        Ok(Token {
+            kind: TokenKind::Char,
+            lexeme: value.to_string(),
+            line: start_line,
+            column: start_column,
+        })
+    }
+
+    fn lex_ident(&mut self) -> Token {
         let start_line = self.line;
         let start_column = self.column;
         let mut ident = String::new();
@@ -204,7 +270,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex_symbol(&mut self) -> Result<Token, CompileError> {
+    fn lex_symbol(&mut self) -> Result<Token, CompileError> {
         let start_line = self.line;
         let start_column = self.column;
         let first = self.advance_char().ok_or_else(|| {
@@ -219,6 +285,7 @@ impl<'a> Lexer<'a> {
             ('<', Some('=')) => Some("<="),
             ('&', Some('&')) => Some("&&"),
             ('|', Some('|')) => Some("||"),
+            ('-', Some('>')) => Some("->"),
             _ => None,
         };
 
@@ -232,7 +299,7 @@ impl<'a> Lexer<'a> {
             });
         }
 
-        if "(){}.,;+*/-%!=<>".contains(first) {
+        if "(){}.,:;+*/-%!=<>".contains(first) {
             return Ok(Token {
                 kind: TokenKind::Symbol,
                 lexeme: first.to_string(),
@@ -249,6 +316,25 @@ impl<'a> Lexer<'a> {
         .with_label("token inválido")
         .with_help("remova o símbolo ou substitua por um operador válido"))
     }
+}
+
+fn parse_escape(ch: char, line: usize, column: usize) -> Result<char, CompileError> {
+    let mapped = match ch {
+        'n' => '\n',
+        't' => '\t',
+        '\'' => '\'',
+        '"' => '"',
+        '\\' => '\\',
+        _ => {
+            return Err(
+                CompileError::new(format!("escape inválido: \\{ch}"), line, column)
+                    .with_span(2)
+                    .with_label("escape não reconhecido")
+                    .with_help("escapes válidos: \\n, \\t, \\\\', \\\", \\\\"),
+            );
+        }
+    };
+    Ok(mapped)
 }
 
 fn is_ident_start(ch: char) -> bool {

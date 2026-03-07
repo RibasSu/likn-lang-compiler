@@ -2,6 +2,7 @@
 pub enum TokenKind {
     Number,
     String,
+    Char,
     Ident,
     Symbol,
     Eof,

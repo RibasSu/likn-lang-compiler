@@ -1,5 +1,6 @@
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Expr, ExprKind, Stmt, StmtKind, TypeRef, TypeRefKind};
 use crate::cli::BuildTarget;
+use crate::typecheck::{Type, TypeInfo};
 
 const STDLIB_PRELUDE: &str = r#"#[cfg(target_arch = "wasm32")]
 extern "C" {
@@ -69,18 +70,17 @@ fn likn_fs_read(_path: impl AsRef<str>) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn likn_fs_write(path: impl AsRef<str>, content: impl AsRef<str>) -> i64 {
+fn likn_fs_write(path: impl AsRef<str>, content: impl AsRef<str>) {
     std::fs::write(path.as_ref(), content.as_ref()).expect("falha ao escrever arquivo");
-    0
 }
 
 #[cfg(target_arch = "wasm32")]
-fn likn_fs_write(_path: impl AsRef<str>, _content: impl AsRef<str>) -> i64 {
+fn likn_fs_write(_path: impl AsRef<str>, _content: impl AsRef<str>) {
     panic!("fs.write não é suportado em wasm32-unknown-unknown")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn likn_fs_append(path: impl AsRef<str>, content: impl AsRef<str>) -> i64 {
+fn likn_fs_append(path: impl AsRef<str>, content: impl AsRef<str>) {
     use std::io::Write as _;
 
     let mut file = std::fs::OpenOptions::new()
@@ -91,12 +91,10 @@ fn likn_fs_append(path: impl AsRef<str>, content: impl AsRef<str>) -> i64 {
 
     file.write_all(content.as_ref().as_bytes())
         .expect("falha ao anexar conteúdo");
-
-    0
 }
 
 #[cfg(target_arch = "wasm32")]
-fn likn_fs_append(_path: impl AsRef<str>, _content: impl AsRef<str>) -> i64 {
+fn likn_fs_append(_path: impl AsRef<str>, _content: impl AsRef<str>) {
     panic!("fs.append não é suportado em wasm32-unknown-unknown")
 }
 
@@ -112,14 +110,14 @@ fn likn_fs_exists(_path: impl AsRef<str>) -> bool {
 
 "#;
 
-pub fn compile_program(ast: &[Stmt], target: BuildTarget) -> String {
+pub fn compile_program(ast: &[Stmt], target: BuildTarget, type_info: &TypeInfo) -> String {
     let mut functions = Vec::new();
     let mut main_stmts = Vec::new();
 
     for stmt in ast {
-        match stmt {
-            Stmt::Func(_, _, _) => functions.push(compile_stmt(stmt, target)),
-            _ => main_stmts.push(compile_stmt(stmt, target)),
+        match &stmt.kind {
+            StmtKind::Func { .. } => functions.push(compile_stmt(stmt, target, type_info)),
+            _ => main_stmts.push(compile_stmt(stmt, target, type_info)),
         }
     }
 
@@ -143,41 +141,72 @@ pub fn compile_program(ast: &[Stmt], target: BuildTarget) -> String {
         rust_code.push_str("pub extern \"C\" ");
     }
 
-    rust_code.push_str(&format!("fn {entry_name}() -> i64 {{\n"));
+    rust_code.push_str(&format!("fn {entry_name}() {{\n"));
     for stmt in main_stmts {
         rust_code.push_str("    ");
         rust_code.push_str(&stmt.replace('\n', "\n    "));
         rust_code.push('\n');
     }
-    rust_code.push_str("    0\n}\n\n");
+    rust_code.push_str("}\n\n");
 
     if target == BuildTarget::Native {
         rust_code.push_str("fn main() {\n");
-        rust_code.push_str("    let _ = __likn_entry();\n");
+        rust_code.push_str("    __likn_entry();\n");
         rust_code.push_str("}\n");
     } else {
         rust_code.push_str("#[cfg(not(target_arch = \"wasm32\"))]\n");
         rust_code.push_str("fn main() {\n");
-        rust_code.push_str("    let _ = likn_main();\n");
+        rust_code.push_str("    likn_main();\n");
         rust_code.push_str("}\n");
     }
 
     rust_code
 }
 
-fn compile_stmt(stmt: &Stmt, target: BuildTarget) -> String {
-    match stmt {
-        Stmt::Let(name, expr) => format!("let mut {name} = {};", compile_expr(expr)),
-        Stmt::Expr(expr) => format!("{};", compile_expr(expr)),
-        Stmt::If(cond, then_block, else_block) => {
+fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> String {
+    match &stmt.kind {
+        StmtKind::Let {
+            name,
+            mutable,
+            ty,
+            expr,
+        } => {
+            let keyword = if *mutable { "let mut" } else { "let" };
+            if let Some(type_ref) = ty {
+                format!(
+                    "{keyword} {name}: {} = {};",
+                    compile_type_ref(type_ref),
+                    compile_expr(expr)
+                )
+            } else {
+                format!("{keyword} {name} = {};", compile_expr(expr))
+            }
+        }
+        StmtKind::Const { name, ty, expr } => {
+            if let Some(type_ref) = ty {
+                format!(
+                    "let {name}: {} = {};",
+                    compile_type_ref(type_ref),
+                    compile_expr(expr)
+                )
+            } else {
+                format!("let {name} = {};", compile_expr(expr))
+            }
+        }
+        StmtKind::Expr(expr) => format!("{};", compile_expr(expr)),
+        StmtKind::If {
+            cond,
+            then_block,
+            else_block,
+        } => {
             let then_code = then_block
                 .iter()
-                .map(|stmt| compile_stmt(stmt, target))
+                .map(|stmt| compile_stmt(stmt, target, type_info))
                 .collect::<Vec<_>>()
                 .join("\n");
             let else_code = else_block
                 .iter()
-                .map(|stmt| compile_stmt(stmt, target))
+                .map(|stmt| compile_stmt(stmt, target, type_info))
                 .collect::<Vec<_>>()
                 .join("\n");
 
@@ -196,39 +225,77 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget) -> String {
                 )
             }
         }
-        Stmt::Func(name, params, body) => {
+        StmtKind::Func {
+            name,
+            params,
+            return_type,
+            body,
+        } => {
+            let sig = type_info.function_sigs.get(name);
             let params_code = params
                 .iter()
-                .map(|p| format!("{p}: i64"))
+                .enumerate()
+                .map(|(idx, param)| {
+                    let ty = param
+                        .ty
+                        .as_ref()
+                        .map(compile_type_ref)
+                        .or_else(|| {
+                            sig.and_then(|found| found.params.get(idx).map(compile_semantic_type))
+                        })
+                        .unwrap_or_else(|| "i64".to_string());
+                    format!("{}: {ty}", param.name)
+                })
                 .collect::<Vec<_>>()
                 .join(", ");
 
+            let ret = return_type
+                .as_ref()
+                .map(compile_type_ref)
+                .or_else(|| sig.map(|found| compile_semantic_type(&found.ret)))
+                .unwrap_or_else(|| "()".to_string());
+
             let body_code = body
                 .iter()
-                .map(|stmt| compile_stmt(stmt, target))
+                .map(|stmt| compile_stmt(stmt, target, type_info))
                 .collect::<Vec<_>>()
                 .join("\n");
             format!(
-                "fn {name}({params_code}) -> i64 {{\n{}\n    0\n}}",
+                "fn {name}({params_code}) -> {ret} {{\n{}\n}}",
                 indent_block(&body_code, 1)
             )
         }
-        Stmt::Return(expr) => format!("return {};", compile_expr(expr)),
-        Stmt::Print(expr) => format!("likn_print({});", compile_expr(expr)),
+        StmtKind::Return(value) => {
+            if let Some(expr) = value {
+                format!("return {};", compile_expr(expr))
+            } else {
+                "return;".to_string()
+            }
+        }
+        StmtKind::Print(expr) => format!("likn_print({});", compile_expr(expr)),
     }
 }
 
 fn compile_expr(expr: &Expr) -> String {
-    match expr {
-        Expr::Number(n) => n.to_string(),
-        Expr::Bool(b) => b.to_string(),
-        Expr::String(s) => format!("\"{}\"", escape_string(s)),
-        Expr::Var(v) => v.clone(),
-        Expr::UnaryOp(op, value) => format!("({}{})", op, compile_expr(value)),
-        Expr::BinaryOp(lhs, op, rhs) => {
+    match &expr.kind {
+        ExprKind::Int(n) => n.to_string(),
+        ExprKind::Float(n) => {
+            let literal = n.to_string();
+            if literal.contains('.') {
+                literal
+            } else {
+                format!("{literal}.0")
+            }
+        }
+        ExprKind::Bool(b) => b.to_string(),
+        ExprKind::Char(ch) => format!("'{}'", escape_char(*ch)),
+        ExprKind::String(s) => format!("String::from(\"{}\")", escape_string(s)),
+        ExprKind::Var(v) => v.clone(),
+        ExprKind::UnaryOp(op, value) => format!("({}{})", op, compile_expr(value)),
+        ExprKind::BinaryOp(lhs, op, rhs) => {
             format!("({} {} {})", compile_expr(lhs), op, compile_expr(rhs))
         }
-        Expr::Call(name, args) => compile_call(name, args),
+        ExprKind::Call(name, args) => compile_call(name, args),
     }
 }
 
@@ -252,35 +319,42 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
         }
         "term.input" => {
             if args_code.len() == 1 {
-                format!("likn_term_input({})", args_code[0])
+                format!("likn_term_input(&{})", args_code[0])
             } else {
                 arity_error_expr(name, 1, args_code.len())
             }
         }
         "fs.read" => {
             if args_code.len() == 1 {
-                format!("likn_fs_read({})", args_code[0])
+                format!("likn_fs_read(&{})", args_code[0])
             } else {
                 arity_error_expr(name, 1, args_code.len())
             }
         }
         "fs.write" => {
             if args_code.len() == 2 {
-                format!("likn_fs_write({}, {})", args_code[0], args_code[1])
+                format!("likn_fs_write(&{}, &{})", args_code[0], args_code[1])
             } else {
                 arity_error_expr(name, 2, args_code.len())
             }
         }
         "fs.append" => {
             if args_code.len() == 2 {
-                format!("likn_fs_append({}, {})", args_code[0], args_code[1])
+                format!("likn_fs_append(&{}, &{})", args_code[0], args_code[1])
             } else {
                 arity_error_expr(name, 2, args_code.len())
             }
         }
         "fs.exists" => {
             if args_code.len() == 1 {
-                format!("likn_fs_exists({})", args_code[0])
+                format!("likn_fs_exists(&{})", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "panic" => {
+            if args_code.len() == 1 {
+                format!("panic!(\"{{}}\", {})", args_code[0])
             } else {
                 arity_error_expr(name, 1, args_code.len())
             }
@@ -293,6 +367,21 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
             format!("{name}({args_code})")
         }
     }
+}
+
+fn compile_type_ref(ty: &TypeRef) -> String {
+    match &ty.kind {
+        TypeRefKind::Named(name) => match name.as_str() {
+            "str" => "String".to_string(),
+            other => other.to_string(),
+        },
+        TypeRefKind::Unit => "()".to_string(),
+        TypeRefKind::Never => "!".to_string(),
+    }
+}
+
+fn compile_semantic_type(ty: &Type) -> String {
+    ty.rust_type_name().to_string()
 }
 
 fn arity_error_expr(name: &str, expected: usize, got: usize) -> String {
@@ -311,6 +400,16 @@ fn escape_string(input: &str) -> String {
         .replace('\n', "\\n")
         .replace('\t', "\\t")
         .replace('"', "\\\"")
+}
+
+fn escape_char(ch: char) -> String {
+    match ch {
+        '\\' => "\\\\".to_string(),
+        '\'' => "\\'".to_string(),
+        '\n' => "\\n".to_string(),
+        '\t' => "\\t".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn indent_block(code: &str, level: usize) -> String {

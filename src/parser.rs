@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Stmt};
+use crate::ast::{Expr, ExprKind, Param, Span, Stmt, StmtKind, TypeRef, TypeRefKind};
 use crate::error::CompileError;
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenKind};
@@ -27,6 +27,9 @@ impl Parser {
         if self.match_ident("let") {
             return self.parse_let();
         }
+        if self.match_ident("const") {
+            return self.parse_const();
+        }
         if self.match_ident("fn") {
             return self.parse_func();
         }
@@ -42,25 +45,80 @@ impl Parser {
 
         let expr = self.parse_expr()?;
         self.consume_optional_semicolon();
-        Ok(Stmt::Expr(expr))
+        Ok(Stmt {
+            span: expr.span,
+            kind: StmtKind::Expr(expr),
+        })
     }
 
     fn parse_let(&mut self) -> Result<Stmt, CompileError> {
-        let var_name = self.expect_ident("nome de variável após 'let'")?;
+        let start = self.previous_span();
+        let mutable = self.match_ident("mut");
+
+        let name_tok = self.expect_ident_token("nome de variável após 'let'")?;
+        let ty = if self.match_symbol(":") {
+            Some(self.parse_type_ref()?)
+        } else {
+            None
+        };
         self.expect_symbol("=", "'=' após nome da variável")?;
         let expr = self.parse_expr()?;
         self.consume_optional_semicolon();
-        Ok(Stmt::Let(var_name, expr))
+
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Let {
+                name: name_tok.lexeme,
+                mutable,
+                ty,
+                expr,
+            },
+        })
+    }
+
+    fn parse_const(&mut self) -> Result<Stmt, CompileError> {
+        let start = self.previous_span();
+        let name_tok = self.expect_ident_token("nome da constante após 'const'")?;
+        let ty = if self.match_symbol(":") {
+            Some(self.parse_type_ref()?)
+        } else {
+            None
+        };
+        self.expect_symbol("=", "'=' após nome da constante")?;
+        let expr = self.parse_expr()?;
+        self.consume_optional_semicolon();
+
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Const {
+                name: name_tok.lexeme,
+                ty,
+                expr,
+            },
+        })
     }
 
     fn parse_func(&mut self) -> Result<Stmt, CompileError> {
-        let name = self.expect_ident("nome da função após 'fn'")?;
+        let start = self.previous_span();
+        let name_tok = self.expect_ident_token("nome da função após 'fn'")?;
         self.expect_symbol("(", "'(' após nome da função")?;
 
         let mut params = Vec::new();
         if !self.check_symbol(")") {
             loop {
-                params.push(self.expect_ident("nome de parâmetro")?);
+                let param_name = self.expect_ident_token("nome de parâmetro")?;
+                let param_span = span_from_token(&param_name);
+                let param_ty = if self.match_symbol(":") {
+                    Some(self.parse_type_ref()?)
+                } else {
+                    None
+                };
+                params.push(Param {
+                    name: param_name.lexeme,
+                    ty: param_ty,
+                    span: param_span,
+                });
+
                 if self.match_symbol(",") {
                     continue;
                 }
@@ -69,12 +127,29 @@ impl Parser {
         }
 
         self.expect_symbol(")", "')' após parâmetros")?;
+
+        let return_type = if self.match_symbol("->") {
+            Some(self.parse_type_ref()?)
+        } else {
+            None
+        };
+
         self.expect_symbol("{", "'{' após assinatura da função")?;
         let body = self.parse_block()?;
-        Ok(Stmt::Func(name, params, body))
+
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Func {
+                name: name_tok.lexeme,
+                params,
+                return_type,
+                body,
+            },
+        })
     }
 
     fn parse_if(&mut self) -> Result<Stmt, CompileError> {
+        let start = self.previous_span();
         let cond = self.parse_expr()?;
         self.expect_symbol("{", "'{' após condição do if")?;
         let then_block = self.parse_block()?;
@@ -86,16 +161,34 @@ impl Parser {
             Vec::new()
         };
 
-        Ok(Stmt::If(cond, then_block, else_block))
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::If {
+                cond,
+                then_block,
+                else_block,
+            },
+        })
     }
 
     fn parse_return(&mut self) -> Result<Stmt, CompileError> {
-        let expr = self.parse_expr()?;
+        let start = self.previous_span();
+
+        let expr = if self.check_symbol(";") || self.check_symbol("}") || self.at_eof() {
+            None
+        } else {
+            Some(self.parse_expr()?)
+        };
+
         self.consume_optional_semicolon();
-        Ok(Stmt::Return(expr))
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Return(expr),
+        })
     }
 
     fn parse_print(&mut self) -> Result<Stmt, CompileError> {
+        let start = self.previous_span();
         let expr = if self.match_symbol("(") {
             let value = self.parse_expr()?;
             self.expect_symbol(")", "')' para fechar print(...)")?;
@@ -104,7 +197,11 @@ impl Parser {
             self.parse_expr()?
         };
         self.consume_optional_semicolon();
-        Ok(Stmt::Print(expr))
+
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Print(expr),
+        })
     }
 
     fn parse_block(&mut self) -> Result<Vec<Stmt>, CompileError> {
@@ -118,6 +215,32 @@ impl Parser {
         Ok(stmts)
     }
 
+    fn parse_type_ref(&mut self) -> Result<TypeRef, CompileError> {
+        if self.match_symbol("(") {
+            let left_span = span_from_token(self.previous_token());
+            self.expect_symbol(")", "')' para tipo unit")?;
+            return Ok(TypeRef {
+                kind: TypeRefKind::Unit,
+                span: left_span,
+            });
+        }
+
+        if self.match_symbol("!") {
+            let tok = self.previous_token();
+            return Ok(TypeRef {
+                kind: TypeRefKind::Never,
+                span: span_from_token(tok),
+            });
+        }
+
+        let token = self.expect_ident_token("nome de tipo")?;
+        let span = span_from_token(&token);
+        Ok(TypeRef {
+            kind: TypeRefKind::Named(token.lexeme),
+            span,
+        })
+    }
+
     fn parse_expr(&mut self) -> Result<Expr, CompileError> {
         self.parse_precedence(1)
     }
@@ -126,18 +249,22 @@ impl Parser {
         let mut left = self.parse_unary()?;
 
         loop {
-            let Some(op) = self.current_binary_op() else {
+            let Some(op_tok) = self.current_binary_op() else {
                 break;
             };
 
-            let prec = precedence(&op);
+            let prec = precedence(&op_tok.lexeme);
             if prec < min_prec {
                 break;
             }
 
             self.advance();
             let right = self.parse_precedence(prec + 1)?;
-            left = Expr::BinaryOp(Box::new(left), op, Box::new(right));
+            let span = left.span;
+            left = Expr {
+                span,
+                kind: ExprKind::BinaryOp(Box::new(left), op_tok.lexeme, Box::new(right)),
+            };
         }
 
         Ok(left)
@@ -145,13 +272,21 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Result<Expr, CompileError> {
         if self.match_symbol("-") {
+            let op = self.previous_token().clone();
             let expr = self.parse_unary()?;
-            return Ok(Expr::UnaryOp("-".to_string(), Box::new(expr)));
+            return Ok(Expr {
+                span: span_from_token(&op),
+                kind: ExprKind::UnaryOp("-".to_string(), Box::new(expr)),
+            });
         }
 
         if self.match_symbol("!") {
+            let op = self.previous_token().clone();
             let expr = self.parse_unary()?;
-            return Ok(Expr::UnaryOp("!".to_string(), Box::new(expr)));
+            return Ok(Expr {
+                span: span_from_token(&op),
+                kind: ExprKind::UnaryOp("!".to_string(), Box::new(expr)),
+            });
         }
 
         self.parse_primary()
@@ -163,33 +298,69 @@ impl Parser {
         match tok.kind {
             TokenKind::Number => {
                 self.advance();
-                let value = tok.lexeme.parse::<i64>().map_err(|_| {
-                    CompileError::new(
-                        format!("inteiro inválido: {}", tok.lexeme),
-                        tok.line,
-                        tok.column,
-                    )
+                if tok.lexeme.contains('.') {
+                    let value = tok.lexeme.parse::<f64>().map_err(|_| {
+                        CompileError::new(
+                            format!("float inválido: {}", tok.lexeme),
+                            tok.line,
+                            tok.column,
+                        )
+                    })?;
+                    Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Float(value),
+                    })
+                } else {
+                    let value = tok.lexeme.parse::<i128>().map_err(|_| {
+                        CompileError::new(
+                            format!("inteiro inválido: {}", tok.lexeme),
+                            tok.line,
+                            tok.column,
+                        )
+                    })?;
+                    Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Int(value),
+                    })
+                }
+            }
+            TokenKind::Char => {
+                self.advance();
+                let ch = tok.lexeme.chars().next().ok_or_else(|| {
+                    CompileError::new("literal char inválido", tok.line, tok.column)
                 })?;
-                Ok(Expr::Number(value))
+                Ok(Expr {
+                    span: span_from_token(&tok),
+                    kind: ExprKind::Char(ch),
+                })
             }
             TokenKind::String => {
                 self.advance();
-                Ok(Expr::String(tok.lexeme))
+                Ok(Expr {
+                    span: span_from_token(&tok),
+                    kind: ExprKind::String(tok.lexeme),
+                })
             }
             TokenKind::Ident => {
                 self.advance();
-                let mut name = tok.lexeme;
+                let mut name = tok.lexeme.clone();
                 while self.match_symbol(".") {
-                    let member = self.expect_ident("identificador após '.'")?;
+                    let member = self.expect_ident_token("identificador após '.'")?;
                     name.push('.');
-                    name.push_str(&member);
+                    name.push_str(&member.lexeme);
                 }
 
                 if name == "true" {
-                    return Ok(Expr::Bool(true));
+                    return Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Bool(true),
+                    });
                 }
                 if name == "false" {
-                    return Ok(Expr::Bool(false));
+                    return Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Bool(false),
+                    });
                 }
 
                 if self.match_symbol("(") {
@@ -204,7 +375,10 @@ impl Parser {
                         }
                     }
                     self.expect_symbol(")", "')' após argumentos da função")?;
-                    Ok(Expr::Call(name, args))
+                    Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Call(name, args),
+                    })
                 } else {
                     if name.contains('.') {
                         return Err(CompileError::new(
@@ -216,7 +390,10 @@ impl Parser {
                         .with_label("acesso com '.' só é permitido para chamadas")
                         .with_help("use parênteses, por exemplo: fs.read(\"arquivo.txt\")"));
                     }
-                    Ok(Expr::Var(name))
+                    Ok(Expr {
+                        span: span_from_token(&tok),
+                        kind: ExprKind::Var(name),
+                    })
                 }
             }
             TokenKind::Symbol if tok.lexeme == "(" => {
@@ -235,7 +412,7 @@ impl Parser {
         }
     }
 
-    fn current_binary_op(&self) -> Option<String> {
+    fn current_binary_op(&self) -> Option<Token> {
         let tok = self.peek();
         if tok.kind != TokenKind::Symbol {
             return None;
@@ -243,7 +420,7 @@ impl Parser {
         if precedence(&tok.lexeme) == 0 {
             return None;
         }
-        Some(tok.lexeme.clone())
+        Some(tok.clone())
     }
 
     fn consume_optional_semicolon(&mut self) {
@@ -267,11 +444,11 @@ impl Parser {
         .with_label("token encontrado aqui"))
     }
 
-    fn expect_ident(&mut self, context: &str) -> Result<String, CompileError> {
+    fn expect_ident_token(&mut self, context: &str) -> Result<Token, CompileError> {
         let tok = self.peek().clone();
         if tok.kind == TokenKind::Ident {
             self.advance();
-            Ok(tok.lexeme)
+            Ok(tok)
         } else {
             Err(CompileError::new(
                 format!("esperado {context}, encontrado '{}'", tok.lexeme),
@@ -312,8 +489,15 @@ impl Parser {
     }
 
     fn peek(&self) -> &Token {
-        // Token EOF é sempre adicionado pelo lexer.
         &self.tokens[self.pos.min(self.tokens.len() - 1)]
+    }
+
+    fn previous_token(&self) -> &Token {
+        &self.tokens[self.pos.saturating_sub(1)]
+    }
+
+    fn previous_span(&self) -> Span {
+        span_from_token(self.previous_token())
     }
 
     fn advance(&mut self) {
@@ -321,6 +505,14 @@ impl Parser {
             self.pos += 1;
         }
     }
+}
+
+fn span_from_token(token: &Token) -> Span {
+    Span::new(
+        token.line,
+        token.column,
+        token.lexeme.chars().count().max(1),
+    )
 }
 
 fn precedence(op: &str) -> u8 {

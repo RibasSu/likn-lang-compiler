@@ -6,6 +6,7 @@ use crate::cli::{BuildProfile, BuildTarget, CliOptions};
 use crate::codegen::compile_program;
 use crate::error::CompileError;
 use crate::parser::parse_source;
+use crate::typecheck::check_program;
 
 #[derive(Debug, Clone)]
 pub struct CompilationArtifacts {
@@ -71,6 +72,8 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
 
     let ast = parse_source(&src)
         .map_err(|err| err.with_source_context(options.input.clone(), src.clone()))?;
+    let type_info = check_program(&ast)
+        .map_err(|err| err.with_source_context(options.input.clone(), src.clone()))?;
 
     let stem = Path::new(&options.input)
         .file_stem()
@@ -82,7 +85,7 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
         .output
         .clone()
         .unwrap_or_else(|| default_output(stem, options.target));
-    let rust_code = compile_program(&ast, options.target);
+    let rust_code = compile_program(&ast, options.target, &type_info);
 
     fs::write(&rust_file, rust_code).map_err(|err| {
         CompileError::new(
