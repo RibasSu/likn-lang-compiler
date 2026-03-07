@@ -111,4 +111,23 @@ mod tests {
         assert_eq!(options.profile, BuildProfile::Fast);
         assert_eq!(options.input, "app.ikn");
     }
+
+    #[test]
+    fn parse_namespaced_stdlib_call() {
+        let ast = parse_source("print(fs.exists(\"Cargo.toml\"))").expect("deve fazer parse");
+        let compiled = compile_program(&ast, BuildTarget::Native);
+        assert!(compiled.contains("likn_fs_exists(\"Cargo.toml\")"));
+    }
+
+    #[test]
+    fn term_input_and_output_codegen() {
+        let src = r#"
+            let nome = term.input("Nome: ")
+            term.println(nome)
+        "#;
+        let ast = parse_source(src).expect("deve fazer parse");
+        let compiled = compile_program(&ast, BuildTarget::Native);
+        assert!(compiled.contains("likn_term_input(\"Nome: \")"));
+        assert!(compiled.contains("likn_print(nome)"));
+    }
 }

@@ -11,6 +11,7 @@ Ele lê arquivos `.ikn`, transforma em código Rust intermediário e gera:
 - Lexer/parser reescritos com precedência de operadores e erros com linha/coluna.
 - Geração de código Rust separando funções globais e ponto de entrada.
 - Perfis de build (`dev` e `fast`) com foco em performance.
+- Biblioteca padrão embutida com `fs.*` e `term.*`.
 - Testes unitários e testes de integração de CLI.
 
 ## Instalação
@@ -82,6 +83,16 @@ if x > 5 {
 }
 
 print(soma(3, 4))
+```
+
+Exemplo com stdlib:
+
+```ikn
+fs.write("log.txt", "hello")
+let conteudo = fs.read("log.txt")
+print(conteudo)
+let nome = term.input("Nome: ")
+term.println(nome)
 ```
 
 ## Roadmap sugerido

@@ -65,6 +65,7 @@ Estratégia:
 - funções Likn viram funções Rust globais
 - bloco principal vira função de entrada (`__likn_entry` ou `likn_main`)
 - `print` mapeia para `println!` (native) ou `likn_print` (web)
+- chamadas `fs.*` e `term.*` mapeiam para helpers de stdlib gerados no prelude Rust
 
 ## 5. Alvos de build
 

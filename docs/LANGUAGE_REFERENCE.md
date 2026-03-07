@@ -101,6 +101,16 @@ fn soma(a, b) {
 print(soma(3, 4))
 ```
 
+## 3.4 Chamada com namespace
+
+A biblioteca padrão usa chamadas com `.`:
+
+```ikn
+let texto = fs.read("dados.txt")
+let nome = term.input("Nome: ")
+term.println(nome)
+```
+
 ## 4. Statements
 
 ## 4.1 Declaração de variável
@@ -185,3 +195,38 @@ erro em linha 3, coluna 12: string não terminada
 - Sem sistema de módulos/imports.
 - Sem estruturas/arrays/objetos.
 - Sem inferência de tipos no nível da linguagem Likn.
+
+## 9. Biblioteca padrão embutida
+
+## 9.1 `fs.*` (arquivos)
+
+- `fs.read(path)` -> `String`
+- `fs.write(path, content)` -> `i64` (`0` em sucesso)
+- `fs.append(path, content)` -> `i64` (`0` em sucesso)
+- `fs.exists(path)` -> `bool`
+
+Exemplo:
+
+```ikn
+fs.write("saida.txt", "linha 1")
+fs.append("saida.txt", "\nlinha 2")
+print(fs.read("saida.txt"))
+print(fs.exists("saida.txt"))
+```
+
+## 9.2 `term.*` (terminal)
+
+- `term.print(valor)` -> imprime em `stdout`
+- `term.println(valor)` -> alias de `term.print`
+- `term.output(valor)` -> alias de `term.print`
+- `term.eprint(valor)` -> imprime em `stderr`
+- `term.eprintln(valor)` -> alias de `term.eprint`
+- `term.error(valor)` -> alias de `term.eprint`
+- `term.input(prompt)` -> lê uma linha de `stdin` e retorna `String`
+
+Exemplo:
+
+```ikn
+let nome = term.input("Nome: ")
+term.println(nome)
+```

@@ -178,10 +178,17 @@ impl Parser {
             }
             TokenKind::Ident => {
                 self.advance();
-                if tok.lexeme == "true" {
+                let mut name = tok.lexeme;
+                while self.match_symbol(".") {
+                    let member = self.expect_ident("identificador após '.'")?;
+                    name.push('.');
+                    name.push_str(&member);
+                }
+
+                if name == "true" {
                     return Ok(Expr::Bool(true));
                 }
-                if tok.lexeme == "false" {
+                if name == "false" {
                     return Ok(Expr::Bool(false));
                 }
 
@@ -197,9 +204,16 @@ impl Parser {
                         }
                     }
                     self.expect_symbol(")", "')' após argumentos da função")?;
-                    Ok(Expr::Call(tok.lexeme, args))
+                    Ok(Expr::Call(name, args))
                 } else {
-                    Ok(Expr::Var(tok.lexeme))
+                    if name.contains('.') {
+                        return Err(CompileError::new(
+                            format!("esperado chamada de função após '{name}'"),
+                            tok.line,
+                            tok.column,
+                        ));
+                    }
+                    Ok(Expr::Var(name))
                 }
             }
             TokenKind::Symbol if tok.lexeme == "(" => {
