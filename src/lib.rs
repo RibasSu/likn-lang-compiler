@@ -4,10 +4,17 @@ pub mod codegen;
 pub mod compiler;
 pub mod error;
 pub mod lexer;
+pub mod lockfile;
+pub mod manager;
+pub mod manifest;
+pub mod module_resolver;
 pub mod module_system;
+pub mod package;
 pub mod parser;
+pub mod resolver;
 pub mod token;
 pub mod typecheck;
+pub mod visibility;
 
 pub use cli::{parse_cli, print_help};
 pub use compiler::compile_file;
