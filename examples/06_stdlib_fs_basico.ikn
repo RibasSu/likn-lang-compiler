@@ -1,0 +1,7 @@
+let caminho = "/tmp/likn_exemplo_fs_basico.txt"
+
+fs.write(caminho, "linha 1")
+fs.append(caminho, "\nlinha 2")
+
+print(fs.exists(caminho))
+print(fs.read(caminho))

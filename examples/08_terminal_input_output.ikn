@@ -1,0 +1,3 @@
+let nome = term.input("Digite seu nome: ")
+term.println("Voce digitou:")
+term.println(nome)

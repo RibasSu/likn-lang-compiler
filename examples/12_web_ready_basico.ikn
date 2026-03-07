@@ -1,0 +1,12 @@
+fn soma(a, b) {
+  return a + b
+}
+
+let total = soma(9, 4) * 2
+print(total)
+
+if total == 26 {
+  term.println("OK para WebAssembly")
+} else {
+  term.eprintln("Valor inesperado")
+}

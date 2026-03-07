@@ -1,0 +1,4 @@
+term.println("Iniciando processo")
+term.eprintln("Aviso: modo debug ativo")
+term.output("Fluxo principal concluido")
+term.error("Fluxo de erro de exemplo")

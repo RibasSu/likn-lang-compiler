@@ -1,0 +1,3 @@
+term.output("Mensagem no stdout")
+term.error("Mensagem no stderr")
+print("print tradicional continua funcionando")

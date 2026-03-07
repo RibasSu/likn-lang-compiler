@@ -1,0 +1,8 @@
+let origem = "/tmp/likn_origem.txt"
+let destino = "/tmp/likn_destino.txt"
+
+fs.write(origem, "conteudo base")
+let texto = fs.read(origem)
+fs.write(destino, texto)
+
+print(fs.read(destino))

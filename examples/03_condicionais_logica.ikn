@@ -1,0 +1,8 @@
+let idade = 21
+let premium = true
+
+if idade >= 18 && premium {
+  print("Acesso premium liberado")
+} else {
+  print("Acesso basico")
+}

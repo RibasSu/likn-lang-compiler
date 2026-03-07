@@ -1,0 +1,20 @@
+fn desconto(valor, faixa) {
+  if faixa > 0 {
+    return valor - faixa
+  } else {
+    return valor
+  }
+}
+
+let bruto = 200
+let valor_final = desconto(bruto, 35)
+print(valor_final)
+
+let arquivo = "/tmp/likn_relatorio.txt"
+fs.write(arquivo, "Relatorio gerado pelo Likn")
+
+if fs.exists(arquivo) {
+  term.println("Arquivo criado com sucesso")
+} else {
+  term.eprintln("Falha ao criar arquivo")
+}

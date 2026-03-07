@@ -1,0 +1,14 @@
+fn soma(a, b) {
+  return a + b
+}
+
+fn fatorial(n) {
+  if n <= 1 {
+    return 1
+  } else {
+    return n * fatorial(n - 1)
+  }
+}
+
+print(soma(5, 7))
+print(fatorial(6))

@@ -1,0 +1,2 @@
+print("Ola, Likn!")
+term.println("Saida via term.println")

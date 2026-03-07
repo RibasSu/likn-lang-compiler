@@ -1,0 +1,8 @@
+let ativo = true
+let bloqueado = false
+
+if ativo && !bloqueado {
+  print("Acesso liberado")
+} else {
+  print("Acesso negado")
+}
