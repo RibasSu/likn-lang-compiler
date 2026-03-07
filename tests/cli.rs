@@ -26,6 +26,16 @@ fn generated_rust_file(source: &PathBuf) -> PathBuf {
         .join(format!("{stem}.rs"))
 }
 
+fn unique_dir(prefix: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock ok")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("likn_{prefix}_{nanos}"));
+    fs::create_dir_all(&dir).expect("create temp dir");
+    dir
+}
+
 fn escape_ikn_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -317,6 +327,176 @@ print(type)
     let _ = fs::remove_file(&source);
     let _ = fs::remove_file(&output);
     let _ = fs::remove_file(&rust_file);
+}
+
+#[test]
+fn cli_resolves_local_module_imports_with_export() {
+    let dir = unique_dir("mods_ok");
+    let source = dir.join("entry_mod_ok.ikn");
+    let output = dir.join("app.bin");
+    let rust_file = generated_rust_file(&source);
+    let math = dir.join("math.ikn");
+
+    fs::write(
+        &math,
+        r#"
+export fn sum(a, b) -> int {
+  a + b
+}
+"#,
+    )
+    .expect("write module");
+    fs::write(
+        &source,
+        r#"
+import math
+print(math.sum(2, 3))
+"#,
+    )
+    .expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(
+        compile.status.success(),
+        "module import should compile: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+
+    let run = Command::new(&output).output().expect("run compiled binary");
+    assert!(run.status.success(), "binary should execute");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(stdout.contains("5"), "stdout should contain module result");
+
+    let _ = fs::remove_file(&rust_file);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cli_rejects_access_to_non_exported_module_function() {
+    let dir = unique_dir("mods_private");
+    let source = dir.join("entry_mod_private.ikn");
+    let rust_file = generated_rust_file(&source);
+    let math = dir.join("math.ikn");
+
+    fs::write(
+        &math,
+        r#"
+fn hidden(a, b) -> int {
+  a + b
+}
+"#,
+    )
+    .expect("write module");
+    fs::write(
+        &source,
+        r#"
+import math
+print(math.hidden(2, 3))
+"#,
+    )
+    .expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(!compile.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&compile.stderr);
+    assert!(
+        stderr.contains("não é exportada"),
+        "stderr should mention missing export"
+    );
+
+    let _ = fs::remove_file(&rust_file);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cli_reports_missing_imported_module() {
+    let dir = unique_dir("mods_missing");
+    let source = dir.join("entry_mod_missing.ikn");
+    let rust_file = generated_rust_file(&source);
+
+    fs::write(
+        &source,
+        r#"
+import missing
+print(1)
+"#,
+    )
+    .expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(!compile.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&compile.stderr);
+    assert!(
+        stderr.contains("módulo 'missing' não encontrado"),
+        "stderr should mention missing module"
+    );
+
+    let _ = fs::remove_file(&rust_file);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cli_rejects_ambiguous_import_namespace_alias() {
+    let dir = unique_dir("mods_ambiguous");
+    let source = dir.join("entry_mod_ambiguous.ikn");
+    let rust_file = generated_rust_file(&source);
+    let foo_dir = dir.join("foo");
+    let bar_dir = dir.join("bar");
+    fs::create_dir_all(&foo_dir).expect("create foo dir");
+    fs::create_dir_all(&bar_dir).expect("create bar dir");
+
+    fs::write(
+        foo_dir.join("math.ikn"),
+        r#"
+export fn sum(a, b) -> int {
+  a + b
+}
+"#,
+    )
+    .expect("write foo module");
+    fs::write(
+        bar_dir.join("math.ikn"),
+        r#"
+export fn sum(a, b) -> int {
+  a + b
+}
+"#,
+    )
+    .expect("write bar module");
+    fs::write(
+        &source,
+        r#"
+import foo.math
+import bar.math
+print(1)
+"#,
+    )
+    .expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(!compile.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&compile.stderr);
+    assert!(
+        stderr.contains("namespace 'math' é ambíguo"),
+        "stderr should mention ambiguous namespace"
+    );
+
+    let _ = fs::remove_file(&rust_file);
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
