@@ -130,4 +130,17 @@ mod tests {
         assert!(compiled.contains("likn_term_input(\"Nome: \")"));
         assert!(compiled.contains("likn_print(nome)"));
     }
+
+    #[test]
+    fn diagnostic_renders_with_source_snippet() {
+        let src = "print(\"abc";
+        let err = parse_source(src)
+            .expect_err("deve falhar")
+            .with_source_context("demo.ikn", src);
+        let rendered = err.to_string();
+        assert!(rendered.contains("error: string não terminada"));
+        assert!(rendered.contains("--> demo.ikn:1:7"));
+        assert!(rendered.contains("1 | print(\"abc"));
+        assert!(rendered.contains("^"));
+    }
 }

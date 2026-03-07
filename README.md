@@ -12,6 +12,7 @@ Ele lê arquivos `.ikn`, transforma em código Rust intermediário e gera:
 - Geração de código Rust separando funções globais e ponto de entrada.
 - Perfis de build (`dev` e `fast`) com foco em performance.
 - Biblioteca padrão embutida com `fs.*` e `term.*`.
+- Diagnósticos de erro com trecho de código e marcador de coluna (estilo rustc).
 - Testes unitários e testes de integração de CLI.
 
 ## Instalação

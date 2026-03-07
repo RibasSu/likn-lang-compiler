@@ -211,7 +211,10 @@ impl Parser {
                             format!("esperado chamada de função após '{name}'"),
                             tok.line,
                             tok.column,
-                        ));
+                        )
+                        .with_span(name.chars().count())
+                        .with_label("acesso com '.' só é permitido para chamadas")
+                        .with_help("use parênteses, por exemplo: fs.read(\"arquivo.txt\")"));
                     }
                     Ok(Expr::Var(name))
                 }
@@ -226,7 +229,9 @@ impl Parser {
                 format!("token inesperado: '{}'", tok.lexeme),
                 tok.line,
                 tok.column,
-            )),
+            )
+            .with_span(tok.lexeme.chars().count().max(1))
+            .with_label("não esperava este token aqui")),
         }
     }
 
@@ -257,7 +262,9 @@ impl Parser {
             format!("esperado {context}, encontrado '{}'", tok.lexeme),
             tok.line,
             tok.column,
-        ))
+        )
+        .with_span(tok.lexeme.chars().count().max(1))
+        .with_label("token encontrado aqui"))
     }
 
     fn expect_ident(&mut self, context: &str) -> Result<String, CompileError> {
@@ -270,7 +277,9 @@ impl Parser {
                 format!("esperado {context}, encontrado '{}'", tok.lexeme),
                 tok.line,
                 tok.column,
-            ))
+            )
+            .with_span(tok.lexeme.chars().count().max(1))
+            .with_label("identificador esperado"))
         }
     }
 

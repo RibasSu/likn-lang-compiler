@@ -69,7 +69,8 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
         )
     })?;
 
-    let ast = parse_source(&src)?;
+    let ast = parse_source(&src)
+        .map_err(|err| err.with_source_context(options.input.clone(), src.clone()))?;
 
     let stem = Path::new(&options.input)
         .file_stem()

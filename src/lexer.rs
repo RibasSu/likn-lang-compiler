@@ -115,7 +115,9 @@ impl<'a> Lexer<'a> {
                 format!("inteiro inválido: {number}"),
                 start_line,
                 start_column,
-            ));
+            )
+            .with_span(number.chars().count())
+            .with_label("literal inteiro inválido"));
         }
 
         Ok(Token {
@@ -149,6 +151,8 @@ impl<'a> Lexer<'a> {
                 let _ = self.advance_char();
                 let escaped = self.advance_char().ok_or_else(|| {
                     CompileError::new("escape incompleto em string", start_line, start_column)
+                        .with_label("sequência de escape inicia aqui")
+                        .with_help("adicione o caractere do escape após '\\'")
                 })?;
                 let mapped = match escaped {
                     'n' => '\n',
@@ -160,7 +164,10 @@ impl<'a> Lexer<'a> {
                             format!("escape inválido: \\{other}"),
                             self.line,
                             self.column.saturating_sub(1),
-                        ));
+                        )
+                        .with_span(2)
+                        .with_label("escape não reconhecido")
+                        .with_help("escapes válidos: \\n, \\t, \\\", \\\\"));
                     }
                 };
                 out.push(mapped);
@@ -171,11 +178,11 @@ impl<'a> Lexer<'a> {
             let _ = self.advance_char();
         }
 
-        Err(CompileError::new(
-            "string não terminada",
-            start_line,
-            start_column,
-        ))
+        Err(
+            CompileError::new("string não terminada", start_line, start_column)
+                .with_label("string começa aqui")
+                .with_help("adicione aspas duplas (\") para fechar a string"),
+        )
     }
 
     pub fn lex_ident(&mut self) -> Token {
@@ -200,9 +207,10 @@ impl<'a> Lexer<'a> {
     pub fn lex_symbol(&mut self) -> Result<Token, CompileError> {
         let start_line = self.line;
         let start_column = self.column;
-        let first = self
-            .advance_char()
-            .ok_or_else(|| CompileError::new("fim inesperado", start_line, start_column))?;
+        let first = self.advance_char().ok_or_else(|| {
+            CompileError::new("fim inesperado", start_line, start_column)
+                .with_label("entrada terminou aqui")
+        })?;
 
         let two_char = match (first, self.peek_char()) {
             ('=', Some('=')) => Some("=="),
@@ -237,7 +245,9 @@ impl<'a> Lexer<'a> {
             format!("símbolo inesperado: {first}"),
             start_line,
             start_column,
-        ))
+        )
+        .with_label("token inválido")
+        .with_help("remova o símbolo ou substitua por um operador válido"))
     }
 }
 

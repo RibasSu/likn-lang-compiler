@@ -79,9 +79,11 @@ fn cli_reports_parse_error() {
 
     assert!(!output.status.success(), "compiler should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error:"), "stderr should have error header");
+    assert!(stderr.contains("-->"), "stderr should show file position");
     assert!(
-        stderr.contains("erro em linha"),
-        "stderr should have location"
+        stderr.contains("^"),
+        "stderr should highlight the error span"
     );
 
     let _ = fs::remove_file(&source);
