@@ -228,18 +228,44 @@ impl TypeChecker {
                 );
             }
 
+            let inherited_param_type = if let Some(type_ref) = return_type {
+                Some(self.type_from_ref(type_ref)?)
+            } else {
+                None
+            };
+
+            if inherited_param_type.is_none() && params.iter().any(|param| param.ty.is_none()) {
+                let missing = params
+                    .iter()
+                    .find(|param| param.ty.is_none())
+                    .expect("at least one param without type");
+                return Err(self
+                    .err_at_span(
+                        missing.span,
+                        format!(
+                            "parâmetro '{}' sem tipo explícito exige retorno com '-> Tipo'",
+                            missing.name
+                        ),
+                    )
+                    .with_help(
+                        "adicione '-> Tipo' na função ou anote o tipo de todos os parâmetros",
+                    ));
+            }
+
             let mut param_types = Vec::with_capacity(params.len());
             for param in params {
                 let ty = if let Some(type_ref) = &param.ty {
                     self.type_from_ref(type_ref)?
+                } else if let Some(default_ty) = &inherited_param_type {
+                    default_ty.clone()
                 } else {
                     self.fresh_infer(InferKind::Any)
                 };
                 param_types.push(ty);
             }
 
-            let ret = if let Some(type_ref) = return_type {
-                self.type_from_ref(type_ref)?
+            let ret = if let Some(default_ty) = inherited_param_type {
+                default_ty
             } else {
                 self.fresh_infer(InferKind::Any)
             };
@@ -274,7 +300,7 @@ impl TypeChecker {
                 env.insert(param.name.clone(), sig.params[index].clone());
             }
 
-            let block = self.check_block(body, &mut env, Some(sig.ret.clone()), true)?;
+            let block = self.check_block(body, &mut env, Some(sig.ret.clone()), true, true)?;
 
             if !block.saw_return {
                 if block.always_returns {
@@ -322,7 +348,7 @@ impl TypeChecker {
 
     fn check_top_level(&mut self, stmts: &[Stmt]) -> Result<(), CompileError> {
         let mut env = Env::new();
-        let block = self.check_block(stmts, &mut env, None, false)?;
+        let block = self.check_block(stmts, &mut env, None, false, false)?;
         if block.always_returns {
             return Err(self.err_at_span(
                 stmts
@@ -341,13 +367,28 @@ impl TypeChecker {
         env: &mut Env,
         expected_return: Option<Type>,
         in_function: bool,
+        allow_tail_expr_return: bool,
     ) -> Result<BlockCheck, CompileError> {
         env.push();
 
         let mut saw_return = false;
         let mut always_returns = false;
 
-        for stmt in stmts {
+        for (index, stmt) in stmts.iter().enumerate() {
+            let is_last = index + 1 == stmts.len();
+            if allow_tail_expr_return && in_function && is_last {
+                if let StmtKind::Expr(expr) = &stmt.kind {
+                    let expected = expected_return.clone().ok_or_else(|| {
+                        self.err_at_span(stmt.span, "retorno implícito sem função de contexto")
+                    })?;
+                    let got = self.infer_expr(expr, env)?;
+                    self.unify(expected, got, stmt.span, "tipo de retorno incompatível")?;
+                    saw_return = true;
+                    always_returns = true;
+                    break;
+                }
+            }
+
             let check = self.check_stmt(stmt, env, expected_return.clone(), in_function)?;
             saw_return |= check.saw_return;
             if check.always_returns {
@@ -445,14 +486,14 @@ impl TypeChecker {
                 )?;
 
                 let then_check =
-                    self.check_block(then_block, env, expected_return.clone(), in_function)?;
+                    self.check_block(then_block, env, expected_return.clone(), in_function, false)?;
                 let else_check = if else_block.is_empty() {
                     BlockCheck {
                         always_returns: false,
                         saw_return: false,
                     }
                 } else {
-                    self.check_block(else_block, env, expected_return, in_function)?
+                    self.check_block(else_block, env, expected_return, in_function, false)?
                 };
 
                 Ok(BlockCheck {
@@ -768,6 +809,8 @@ impl TypeChecker {
                 "usize" => Ok(Type::Usize),
                 "f32" => Ok(Type::F32),
                 "f64" => Ok(Type::F64),
+                "int" => Ok(Type::I64),
+                "float" => Ok(Type::F64),
                 "bool" => Ok(Type::Bool),
                 "char" => Ok(Type::Char),
                 "str" => Ok(Type::Str),
@@ -775,7 +818,7 @@ impl TypeChecker {
                 _ => Err(self
                     .err_at_span(type_ref.span, format!("tipo desconhecido: {name}"))
                     .with_help(
-                        "tipos suportados: i8/i16/i32/i64/i128, u8/u16/u32/u64/u128, isize, usize, f32, f64, bool, char, str, String, (), !",
+                        "tipos suportados: int, float, i8/i16/i32/i64/i128, u8/u16/u32/u64/u128, isize, usize, f32, f64, bool, char, str, String, (), !",
                     )),
             },
         }

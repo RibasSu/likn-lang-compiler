@@ -1,4 +1,4 @@
-fn desconto(valor, faixa) {
+fn desconto(valor, faixa) -> int {
   if faixa > 0 {
     return valor - faixa
   } else {

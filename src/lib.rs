@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn parse_function_and_call() {
         let src = r#"
-            fn soma(a, b) {
+            fn soma(a, b) -> int {
                 return a + b
             }
             print(soma(10, 5))
@@ -79,6 +79,49 @@ mod tests {
         let compiled = compile_program(&ast, BuildTarget::Native, &types);
         assert!(compiled.contains("fn soma(a: i64, b: i64) -> i64"));
         assert!(compiled.contains("soma(10, 5)"));
+    }
+
+    #[test]
+    fn function_params_inherit_return_type_when_omitted() {
+        let src = r#"
+            fn mult(a, b, c) -> int {
+                return a * b * c
+            }
+            print(mult(2, 3, 4))
+        "#;
+        let ast = parse_source(src).expect("parse");
+        let types = check_program(&ast).expect("tipagem");
+        let compiled = compile_program(&ast, BuildTarget::Native, &types);
+        assert!(compiled.contains("fn mult(a: i64, b: i64, c: i64) -> i64"));
+    }
+
+    #[test]
+    fn function_allows_implicit_tail_return_expression() {
+        let src = r#"
+            fn sum(a, b) -> int {
+                a + b
+            }
+            print(sum(1, 2))
+        "#;
+        let ast = parse_source(src).expect("parse");
+        let types = check_program(&ast).expect("tipagem");
+        let compiled = compile_program(&ast, BuildTarget::Native, &types);
+        assert!(compiled.contains("return (a + b);"));
+    }
+
+    #[test]
+    fn function_without_return_type_requires_explicit_param_types() {
+        let src = r#"
+            fn sum(a, b) {
+                return a + b
+            }
+        "#;
+        let ast = parse_source(src).expect("parse");
+        let err = check_program(&ast).expect_err("deve falhar");
+        assert!(
+            err.to_string()
+                .contains("parâmetro 'a' sem tipo explícito exige retorno com '-> Tipo'")
+        );
     }
 
     #[test]

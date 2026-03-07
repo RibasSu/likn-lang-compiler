@@ -30,6 +30,10 @@ Inteiros e floats são suportados:
 - inteiros: `i8/i16/i32/i64/i128`, `u8/u16/u32/u64/u128`, `isize`, `usize`
 - floats: `f32`, `f64`
 
+Aliases simplificados:
+- `int` -> `i64`
+- `float` -> `f64`
+
 ```ikn
 let idade = 42
 ```
@@ -98,7 +102,7 @@ print !false
 ## 3.3 Chamada de função
 
 ```ikn
-fn soma(a, b) {
+fn soma(a, b) -> int {
   return a + b
 }
 
@@ -165,8 +169,6 @@ if x > 5 {
 
 ## 4.3 Definição de função
 
-Anotações de tipo são opcionais. O compilador faz inferência quando possível.
-
 ```ikn
 fn dobro(v: i64) -> i64 {
   return v * 2
@@ -175,15 +177,29 @@ fn dobro(v: i64) -> i64 {
 
 Funções sem retorno útil usam `()`.
 
+Regra de herança de tipo em parâmetros:
+- Se a função declarar `-> Tipo`, todo parâmetro sem tipo explícito herda `Tipo`.
+- Parâmetros com tipo explícito mantêm o tipo declarado.
+- Se não houver `-> Tipo`, todos os parâmetros precisam de tipo explícito.
+- A herança automática vale apenas para parâmetros de função.
+
 ## 4.4 `return`
 
 ```ikn
-fn ident(v) {
+fn ident(v) -> int {
   return v
 }
 ```
 
 Também existe `return;` para retorno unit.
+
+O último `Expr` do corpo da função também pode ser retorno implícito:
+
+```ikn
+fn sum(a, b) -> int {
+  a + b
+}
+```
 
 ## 4.6 Tipos e inferência
 
@@ -201,6 +217,30 @@ Inferência:
 ```ikn
 let x = 10
 let y = x + 2
+```
+
+Herança de tipo do retorno para parâmetros:
+
+```ikn
+fn sum(a, b) -> int {
+  return a + b
+}
+```
+
+Equivale a:
+
+```ikn
+fn sum(a: int, b: int) -> int {
+  return a + b
+}
+```
+
+Parcialmente explícito também é válido:
+
+```ikn
+fn calc(a: float, b, c) -> int {
+  return b + c
+}
 ```
 
 O compilador rejeita combinações inválidas:

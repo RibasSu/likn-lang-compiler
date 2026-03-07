@@ -1,8 +1,8 @@
-fn soma(a, b) {
+fn soma(a, b) -> int {
   return a + b
 }
 
-fn fatorial(n) {
+fn fatorial(n) -> int {
   if n <= 1 {
     return 1
   } else {

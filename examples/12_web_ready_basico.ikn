@@ -1,4 +1,4 @@
-fn soma(a, b) {
+fn soma(a, b) -> int {
   return a + b
 }
 

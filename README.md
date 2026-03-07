@@ -13,6 +13,7 @@ Ele lê arquivos `.ikn`, transforma em código Rust intermediário e gera:
 - Perfis de build (`dev` e `fast`) com foco em performance.
 - Biblioteca padrão embutida com `fs.*` e `term.*`.
 - Sistema de tipos estático com inferência, anotação explícita, `const`, `mut`, `()`, `!` e checagem de coerência de retorno.
+- Herança de tipo em parâmetros: com `-> T`, parâmetros sem anotação viram `T` (ex.: `fn sum(a, b) -> int`).
 - Sintaxe híbrida: aliases estilo Python (`def`, `elif`, `and/or/not`, `# comentário`) com blocos `{}` no estilo JavaScript.
 - Diagnósticos de erro com trecho de código e marcador de coluna (estilo rustc).
 - Testes unitários e testes de integração de CLI.
@@ -75,7 +76,7 @@ Flags:
 ```ikn
 let x = 10
 
-fn soma(a, b) {
+fn soma(a, b) -> int {
   return a + b
 }
 

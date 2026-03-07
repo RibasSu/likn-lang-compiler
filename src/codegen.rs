@@ -258,11 +258,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
                 .or_else(|| sig.map(|found| compile_semantic_type(&found.ret)))
                 .unwrap_or_else(|| "()".to_string());
 
-            let body_code = body
-                .iter()
-                .map(|stmt| compile_stmt(stmt, target, type_info))
-                .collect::<Vec<_>>()
-                .join("\n");
+            let body_code = compile_function_body(body, target, type_info);
             format!(
                 "fn {fn_name}({params_code}) -> {ret} {{\n{}\n}}",
                 indent_block(&body_code, 1)
@@ -375,6 +371,8 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
 fn compile_type_ref(ty: &TypeRef) -> String {
     match &ty.kind {
         TypeRefKind::Named(name) => match name.as_str() {
+            "int" => "i64".to_string(),
+            "float" => "f64".to_string(),
             "str" => "String".to_string(),
             other => other.to_string(),
         },
@@ -385,6 +383,22 @@ fn compile_type_ref(ty: &TypeRef) -> String {
 
 fn compile_semantic_type(ty: &Type) -> String {
     ty.rust_type_name().to_string()
+}
+
+fn compile_function_body(body: &[Stmt], target: BuildTarget, type_info: &TypeInfo) -> String {
+    body.iter()
+        .enumerate()
+        .map(|(index, stmt)| {
+            let is_last = index + 1 == body.len();
+            if is_last {
+                if let StmtKind::Expr(expr) = &stmt.kind {
+                    return format!("return {};", compile_expr(expr));
+                }
+            }
+            compile_stmt(stmt, target, type_info)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn arity_error_expr(name: &str, expected: usize, got: usize) -> String {

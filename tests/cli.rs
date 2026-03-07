@@ -360,3 +360,61 @@ print(calc(7))
     let _ = fs::remove_file(&output);
     let _ = fs::remove_file(&rust_file);
 }
+
+#[test]
+fn cli_infers_param_types_from_declared_return_type() {
+    let source = unique_path("ikn");
+    let output = unique_path("bin");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+fn sum(a, b) -> int {
+  a + b
+}
+print(sum(3, 4))
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(
+        compile.status.success(),
+        "compiler should infer param types from return type"
+    );
+
+    let run = Command::new(&output).output().expect("run compiled binary");
+    assert!(run.status.success(), "binary should execute");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(stdout.contains("7"), "output should contain 7");
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}
+
+#[test]
+fn cli_rejects_untyped_params_without_return_type() {
+    let source = unique_path("ikn");
+    let program = r#"
+fn sum(a, b) {
+  return a + b
+}
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let output = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(!output.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("parâmetro 'a' sem tipo explícito exige retorno com '-> Tipo'"),
+        "stderr should explain missing return type inheritance rule"
+    );
+
+    let _ = fs::remove_file(&source);
+}
