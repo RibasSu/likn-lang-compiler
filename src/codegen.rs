@@ -117,7 +117,15 @@ pub fn compile_program(ast: &[Stmt], target: BuildTarget, type_info: &TypeInfo) 
     for stmt in ast {
         match &stmt.kind {
             StmtKind::Func { .. } => functions.push(compile_stmt(stmt, target, type_info)),
-            _ => main_stmts.push(compile_stmt(stmt, target, type_info)),
+            StmtKind::Export(inner) if matches!(inner.kind, StmtKind::Func { .. }) => {
+                functions.push(compile_stmt(stmt, target, type_info))
+            }
+            _ => {
+                let compiled = compile_stmt(stmt, target, type_info);
+                if !compiled.trim().is_empty() {
+                    main_stmts.push(compiled);
+                }
+            }
         }
     }
 
@@ -165,6 +173,8 @@ pub fn compile_program(ast: &[Stmt], target: BuildTarget, type_info: &TypeInfo) 
 
 fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> String {
     match &stmt.kind {
+        StmtKind::Import(_) => String::new(),
+        StmtKind::Export(inner) => compile_stmt(inner, target, type_info),
         StmtKind::Let {
             name,
             mutable,

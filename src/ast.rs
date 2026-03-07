@@ -56,6 +56,8 @@ pub struct Expr {
 
 #[derive(Debug, Clone)]
 pub enum StmtKind {
+    Import(String),
+    Export(Box<Stmt>),
     Let {
         name: String,
         mutable: bool,

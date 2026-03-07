@@ -212,19 +212,25 @@ impl TypeChecker {
 
     fn collect_functions(&mut self, stmts: &[Stmt]) -> Result<(), CompileError> {
         for stmt in stmts {
+            let func_stmt = match &stmt.kind {
+                StmtKind::Func { .. } => stmt,
+                StmtKind::Export(inner) => inner,
+                _ => continue,
+            };
+
             let StmtKind::Func {
                 name,
                 params,
                 return_type,
                 ..
-            } = &stmt.kind
+            } = &func_stmt.kind
             else {
                 continue;
             };
 
             if self.functions.contains_key(name) {
                 return Err(
-                    self.err_at_span(stmt.span, format!("função '{name}' já foi declarada"))
+                    self.err_at_span(func_stmt.span, format!("função '{name}' já foi declarada"))
                 );
             }
 
@@ -284,15 +290,21 @@ impl TypeChecker {
 
     fn check_functions(&mut self, stmts: &[Stmt]) -> Result<(), CompileError> {
         for stmt in stmts {
+            let func_stmt = match &stmt.kind {
+                StmtKind::Func { .. } => stmt,
+                StmtKind::Export(inner) => inner,
+                _ => continue,
+            };
+
             let StmtKind::Func {
                 name, params, body, ..
-            } = &stmt.kind
+            } = &func_stmt.kind
             else {
                 continue;
             };
 
             let sig = self.functions.get(name).cloned().ok_or_else(|| {
-                self.err_at_span(stmt.span, "assinatura de função não encontrada")
+                self.err_at_span(func_stmt.span, "assinatura de função não encontrada")
             })?;
 
             let mut env = Env::new();
@@ -308,7 +320,7 @@ impl TypeChecker {
                         self.unify(
                             sig.ret.clone(),
                             Type::Never,
-                            stmt.span,
+                            func_stmt.span,
                             "função diverge e não retorna normalmente",
                         )?;
                     }
@@ -316,7 +328,7 @@ impl TypeChecker {
                     self.unify(
                         sig.ret.clone(),
                         Type::Unit,
-                        stmt.span,
+                        func_stmt.span,
                         "função sem retorno explícito deve retornar ()",
                     )?;
                 }
@@ -325,7 +337,7 @@ impl TypeChecker {
             let resolved_ret = self.resolve_with_defaults(sig.ret.clone());
             if !block.always_returns && !matches!(resolved_ret, Type::Unit) {
                 return Err(self
-                    .err_at_span(stmt.span, "nem todos os caminhos retornam um valor")
+                    .err_at_span(func_stmt.span, "nem todos os caminhos retornam um valor")
                     .with_help(format!(
                         "a função '{}' foi inferida/declarada com retorno '{}'",
                         name,
@@ -336,7 +348,7 @@ impl TypeChecker {
             if matches!(resolved_ret, Type::Never) && !block.always_returns {
                 return Err(self
                     .err_at_span(
-                        stmt.span,
+                        func_stmt.span,
                         "função com retorno '!' não pode terminar normalmente",
                     )
                     .with_help("garanta que todos os caminhos divirjam (ex.: panic)"));
@@ -413,6 +425,25 @@ impl TypeChecker {
         in_function: bool,
     ) -> Result<BlockCheck, CompileError> {
         match &stmt.kind {
+            StmtKind::Import(_) => {
+                if in_function {
+                    return Err(self
+                        .err_at_span(stmt.span, "import só é permitido no escopo global")
+                        .with_help("mova o import para o topo do arquivo"));
+                }
+                Ok(BlockCheck {
+                    always_returns: false,
+                    saw_return: false,
+                })
+            }
+            StmtKind::Export(inner) => {
+                if in_function {
+                    return Err(self
+                        .err_at_span(stmt.span, "export só é permitido no escopo global")
+                        .with_help("mova o export para o topo do arquivo"));
+                }
+                self.check_stmt(inner, env, expected_return, in_function)
+            }
             StmtKind::Let {
                 name,
                 mutable: _,

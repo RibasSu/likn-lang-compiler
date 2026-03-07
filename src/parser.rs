@@ -24,6 +24,12 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, CompileError> {
+        if self.match_ident("import") {
+            return self.parse_import();
+        }
+        if self.match_ident("export") {
+            return self.parse_export();
+        }
         if self.match_ident("let") {
             return self.parse_let();
         }
@@ -48,6 +54,49 @@ impl Parser {
         Ok(Stmt {
             span: expr.span,
             kind: StmtKind::Expr(expr),
+        })
+    }
+
+    fn parse_import(&mut self) -> Result<Stmt, CompileError> {
+        let start = self.previous_span();
+        let first = self.expect_ident_token("nome do módulo após 'import'")?;
+        let mut path = first.lexeme;
+
+        while self.match_symbol(".") {
+            let segment = self.expect_ident_token("segmento do módulo após '.'")?;
+            path.push('.');
+            path.push_str(&segment.lexeme);
+        }
+
+        self.consume_optional_semicolon();
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Import(path),
+        })
+    }
+
+    fn parse_export(&mut self) -> Result<Stmt, CompileError> {
+        let start = self.previous_span();
+        let inner = if self.match_ident("let") {
+            self.parse_let()?
+        } else if self.match_ident("const") {
+            self.parse_const()?
+        } else if self.match_ident("fn") || self.match_ident("def") {
+            self.parse_func()?
+        } else {
+            let tok = self.peek().clone();
+            return Err(CompileError::new(
+                "apenas let/const/fn podem ser exportados",
+                tok.line,
+                tok.column,
+            )
+            .with_span(tok.lexeme.chars().count().max(1))
+            .with_label("item não exportável"));
+        };
+
+        Ok(Stmt {
+            span: start,
+            kind: StmtKind::Export(Box::new(inner)),
         })
     }
 
