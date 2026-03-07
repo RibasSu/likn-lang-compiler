@@ -4,6 +4,7 @@ pub mod codegen;
 pub mod compiler;
 pub mod error;
 pub mod lexer;
+pub mod module_system;
 pub mod parser;
 pub mod token;
 pub mod typecheck;

@@ -5,7 +5,7 @@ use std::process::Command;
 use crate::cli::{BuildProfile, BuildTarget, CliOptions};
 use crate::codegen::compile_program;
 use crate::error::CompileError;
-use crate::parser::parse_source;
+use crate::module_system::resolve_program;
 use crate::typecheck::check_program;
 
 #[derive(Debug, Clone)]
@@ -62,18 +62,14 @@ fn default_output(stem: &str, target: BuildTarget) -> String {
 }
 
 pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, CompileError> {
-    let src = fs::read_to_string(&options.input).map_err(|err| {
-        CompileError::new(
-            format!("falha ao ler arquivo {}: {err}", options.input),
-            1,
-            1,
-        )
+    let resolved = resolve_program(Path::new(&options.input))?;
+    let type_info = check_program(&resolved.ast).map_err(|err| {
+        if resolved.has_imports {
+            err
+        } else {
+            err.with_source_context(options.input.clone(), resolved.entry_source.clone())
+        }
     })?;
-
-    let ast = parse_source(&src)
-        .map_err(|err| err.with_source_context(options.input.clone(), src.clone()))?;
-    let type_info = check_program(&ast)
-        .map_err(|err| err.with_source_context(options.input.clone(), src.clone()))?;
 
     let stem = Path::new(&options.input)
         .file_stem()
@@ -85,7 +81,7 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
         .output
         .clone()
         .unwrap_or_else(|| default_output(stem, options.target));
-    let rust_code = compile_program(&ast, options.target, &type_info);
+    let rust_code = compile_program(&resolved.ast, options.target, &type_info);
 
     fs::write(&rust_file, rust_code).map_err(|err| {
         CompileError::new(
