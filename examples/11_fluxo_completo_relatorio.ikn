@@ -7,8 +7,8 @@ fn desconto(valor, faixa) {
 }
 
 let bruto = 200
-let valor_final = desconto(bruto, 35)
-print(valor_final)
+let final = desconto(bruto, 35)
+print(final)
 
 let arquivo = "/tmp/likn_relatorio.txt"
 fs.write(arquivo, "Relatorio gerado pelo Likn")

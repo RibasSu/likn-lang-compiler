@@ -278,3 +278,43 @@ if x > 10 {
     let _ = fs::remove_file(&output);
     let _ = fs::remove_file(&rust_file);
 }
+
+#[test]
+fn cli_escapes_rust_reserved_identifiers() {
+    let source = unique_path("ikn");
+    let output = unique_path("bin");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+fn match(v: i64) -> i64 {
+  return v + 1
+}
+
+let final = 10
+let type = match(final)
+print(type)
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(
+        compile.status.success(),
+        "compiler should escape reserved identifiers"
+    );
+
+    let run = Command::new(&output).output().expect("run compiled binary");
+    assert!(run.status.success(), "binary should execute");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.contains("11"),
+        "output should contain computed result"
+    );
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}

@@ -171,6 +171,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
             ty,
             expr,
         } => {
+            let name = escape_ident(name);
             let keyword = if *mutable { "let mut" } else { "let" };
             if let Some(type_ref) = ty {
                 format!(
@@ -183,6 +184,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
             }
         }
         StmtKind::Const { name, ty, expr } => {
+            let name = escape_ident(name);
             if let Some(type_ref) = ty {
                 format!(
                     "let {name}: {} = {};",
@@ -231,6 +233,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
             return_type,
             body,
         } => {
+            let fn_name = escape_ident(name);
             let sig = type_info.function_sigs.get(name);
             let params_code = params
                 .iter()
@@ -244,7 +247,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
                             sig.and_then(|found| found.params.get(idx).map(compile_semantic_type))
                         })
                         .unwrap_or_else(|| "i64".to_string());
-                    format!("{}: {ty}", param.name)
+                    format!("{}: {ty}", escape_ident(&param.name))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -261,7 +264,7 @@ fn compile_stmt(stmt: &Stmt, target: BuildTarget, type_info: &TypeInfo) -> Strin
                 .collect::<Vec<_>>()
                 .join("\n");
             format!(
-                "fn {name}({params_code}) -> {ret} {{\n{}\n}}",
+                "fn {fn_name}({params_code}) -> {ret} {{\n{}\n}}",
                 indent_block(&body_code, 1)
             )
         }
@@ -290,7 +293,7 @@ fn compile_expr(expr: &Expr) -> String {
         ExprKind::Bool(b) => b.to_string(),
         ExprKind::Char(ch) => format!("'{}'", escape_char(*ch)),
         ExprKind::String(s) => format!("String::from(\"{}\")", escape_string(s)),
-        ExprKind::Var(v) => v.clone(),
+        ExprKind::Var(v) => escape_ident(v),
         ExprKind::UnaryOp(op, value) => format!("({}{})", op, compile_expr(value)),
         ExprKind::BinaryOp(lhs, op, rhs) => {
             format!("({} {} {})", compile_expr(lhs), op, compile_expr(rhs))
@@ -364,7 +367,7 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
         }
         _ => {
             let args_code = args_code.join(", ");
-            format!("{name}({args_code})")
+            format!("{}({args_code})", escape_ident(name))
         }
     }
 }
@@ -392,6 +395,71 @@ fn arity_error_expr(name: &str, expected: usize, got: usize) -> String {
 
 fn compile_error_expr(message: &str) -> String {
     format!("compile_error!(\"{}\")", escape_string(message))
+}
+
+fn escape_ident(name: &str) -> String {
+    if is_rust_keyword(name) {
+        format!("r#{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+fn is_rust_keyword(name: &str) -> bool {
+    matches!(
+        name,
+        "as" | "break"
+            | "const"
+            | "continue"
+            | "crate"
+            | "else"
+            | "enum"
+            | "extern"
+            | "false"
+            | "fn"
+            | "for"
+            | "if"
+            | "impl"
+            | "in"
+            | "let"
+            | "loop"
+            | "match"
+            | "mod"
+            | "move"
+            | "mut"
+            | "pub"
+            | "ref"
+            | "return"
+            | "self"
+            | "Self"
+            | "static"
+            | "struct"
+            | "super"
+            | "trait"
+            | "true"
+            | "type"
+            | "unsafe"
+            | "use"
+            | "where"
+            | "while"
+            | "async"
+            | "await"
+            | "dyn"
+            | "abstract"
+            | "become"
+            | "box"
+            | "do"
+            | "final"
+            | "macro"
+            | "override"
+            | "priv"
+            | "try"
+            | "typeof"
+            | "unsized"
+            | "virtual"
+            | "yield"
+            | "union"
+    )
 }
 
 fn escape_string(input: &str) -> String {
