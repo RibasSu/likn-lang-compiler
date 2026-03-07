@@ -25,7 +25,9 @@ print(x)
 
 ## 2.1 Números
 
-Apenas inteiros de 64 bits (`i64`).
+Inteiros e floats são suportados:
+- inteiros: `i8/i16/i32/i64/i128`, `u8/u16/u32/u64/u128`, `isize`, `usize`
+- floats: `f32`, `f64`
 
 ```ikn
 let idade = 42
@@ -115,9 +117,24 @@ term.println(nome)
 
 ## 4.1 Declaração de variável
 
+Imutável por padrão; mutabilidade é opt-in com `mut`:
+
 ```ikn
 let x = 10
-let y = x + 20
+let mut y: i64 = x + 20
+```
+
+Shadowing é permitido:
+
+```ikn
+let x = 1
+let x = x + 1
+```
+
+## 4.1.1 Constantes
+
+```ikn
+const limite: i64 = 100
 ```
 
 ## 4.2 `if / else`
@@ -132,15 +149,15 @@ if x > 5 {
 
 ## 4.3 Definição de função
 
-Todas as funções são geradas como `fn nome(...params: i64) -> i64`.
+Anotações de tipo são opcionais. O compilador faz inferência quando possível.
 
 ```ikn
-fn dobro(v) {
+fn dobro(v: i64) -> i64 {
   return v * 2
 }
 ```
 
-Observação: o compilador injeta `0` no fim da função se não houver retorno explícito no último caminho.
+Funções sem retorno útil usam `()`.
 
 ## 4.4 `return`
 
@@ -149,6 +166,31 @@ fn ident(v) {
   return v
 }
 ```
+
+Também existe `return;` para retorno unit.
+
+## 4.6 Tipos e inferência
+
+Anotação explícita:
+
+```ikn
+let x: i64 = 10
+fn soma(a: i64, b: i64) -> i64 {
+  return a + b
+}
+```
+
+Inferência:
+
+```ikn
+let x = 10
+let y = x + 2
+```
+
+O compilador rejeita combinações inválidas:
+- `1 + true`
+- `if 10 { ... }`
+- funções com caminhos de retorno inconsistentes
 
 ## 4.5 `print`
 
@@ -191,18 +233,17 @@ erro em linha 3, coluna 12: string não terminada
 
 ## 8. Limitações atuais
 
-- Tipagem fixa focada em `i64` para assinaturas de função.
 - Sem sistema de módulos/imports.
 - Sem estruturas/arrays/objetos.
-- Sem inferência de tipos no nível da linguagem Likn.
+- `str` é aceito na sintaxe, mas mapeado para `String` no backend atual.
 
 ## 9. Biblioteca padrão embutida
 
 ## 9.1 `fs.*` (arquivos)
 
 - `fs.read(path)` -> `String`
-- `fs.write(path, content)` -> `i64` (`0` em sucesso)
-- `fs.append(path, content)` -> `i64` (`0` em sucesso)
+- `fs.write(path, content)` -> `()`
+- `fs.append(path, content)` -> `()`
 - `fs.exists(path)` -> `bool`
 
 Exemplo:
@@ -223,6 +264,7 @@ print(fs.exists("saida.txt"))
 - `term.eprintln(valor)` -> alias de `term.eprint`
 - `term.error(valor)` -> alias de `term.eprint`
 - `term.input(prompt)` -> lê uma linha de `stdin` e retorna `String`
+- `panic(msg)` -> `!` (never)
 
 Exemplo:
 

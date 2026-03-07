@@ -188,3 +188,93 @@ term.println(nome)
     let _ = fs::remove_file(&rust_file);
     let _ = fs::remove_file(&data_file);
 }
+
+#[test]
+fn cli_rejects_mixed_numeric_and_bool() {
+    let source = unique_path("ikn");
+    fs::write(&source, "print(1 + true)").expect("write source");
+
+    let output = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+
+    assert!(!output.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("operação aritmética"),
+        "stderr should mention arithmetic type mismatch"
+    );
+
+    let _ = fs::remove_file(&source);
+}
+
+#[test]
+fn cli_rejects_inconsistent_function_return_paths() {
+    let source = unique_path("ikn");
+    let program = r#"
+fn parcial(v: i64) -> i64 {
+  if v > 0 {
+    return v
+  }
+}
+print(parcial(10))
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let output = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .output()
+        .expect("run compiler");
+
+    assert!(!output.status.success(), "compiler should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nem todos os caminhos retornam"),
+        "stderr should mention missing return path"
+    );
+
+    let _ = fs::remove_file(&source);
+}
+
+#[test]
+fn cli_accepts_annotations_const_mut_shadowing_and_never() {
+    let source = unique_path("ikn");
+    let output = unique_path("bin");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+const base: i64 = 5
+
+fn soma(a: i64, b: i64) -> i64 {
+  return a + b
+}
+
+fn explode(msg: String) -> ! {
+  panic(msg)
+}
+
+let mut x: i64 = base
+let x = soma(x, 10)
+print(x)
+if x > 10 {
+  print("ok")
+} else {
+  explode("erro")
+}
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+
+    assert!(compile.status.success(), "compiler should succeed");
+    assert!(output.exists(), "binary should be generated");
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}

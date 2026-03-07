@@ -12,6 +12,7 @@ Ele lê arquivos `.ikn`, transforma em código Rust intermediário e gera:
 - Geração de código Rust separando funções globais e ponto de entrada.
 - Perfis de build (`dev` e `fast`) com foco em performance.
 - Biblioteca padrão embutida com `fs.*` e `term.*`.
+- Sistema de tipos estático com inferência, anotação explícita, `const`, `mut`, `()`, `!` e checagem de coerência de retorno.
 - Diagnósticos de erro com trecho de código e marcador de coluna (estilo rustc).
 - Testes unitários e testes de integração de CLI.
 
@@ -98,7 +99,6 @@ term.println(nome)
 
 ## Roadmap sugerido
 
-- Tipos além de `i64` (string/boolean em assinaturas de função)
 - Módulos/arquivos múltiplos
 - Macros/funções nativas para integração web
 - Gerador de documentação automatizado (site)
