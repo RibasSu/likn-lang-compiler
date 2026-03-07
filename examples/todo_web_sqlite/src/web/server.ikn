@@ -1,0 +1,6 @@
+import web
+
+export fn start(port: int) -> () {
+  web.start(port)
+  web.run()
+}

@@ -1,0 +1,15 @@
+export fn app_port() -> int {
+  8080
+}
+
+export fn app_db_path() -> str {
+  "todo_app.db"
+}
+
+export fn session_cookie_name() -> str {
+  "todo_session"
+}
+
+export fn session_expires_at() -> str {
+  "2099-12-31T23:59:59Z"
+}

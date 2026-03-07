@@ -1,0 +1,28 @@
+import services.task_service
+import views.dashboard_view
+import views.task_form_view
+import web.response
+
+export fn dashboard() -> str {
+  let tasks = task_service.list_tasks(1)
+  response.html_page(dashboard_view.render("Demo", tasks))
+}
+
+export fn new_task_page() -> str {
+  response.html_page(task_form_view.render_new())
+}
+
+export fn create_task() -> str {
+  task_service.create_task(1, "Nova tarefa", "Criada via controlador")
+  response.redirect_to("/dashboard")
+}
+
+export fn toggle_task() -> str {
+  task_service.toggle_task(1, 1)
+  response.redirect_to("/dashboard")
+}
+
+export fn delete_task() -> str {
+  task_service.delete_task(1, 1)
+  response.redirect_to("/dashboard")
+}

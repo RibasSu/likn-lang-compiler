@@ -1,0 +1,28 @@
+import crypto
+import database.sqlite
+import utils.time
+
+export fn insert(db_path: str, name: str, email: str, password: str) -> () {
+  let hash = crypto.hash_password(password)
+  let q0 = str.concat("insert into users(name,email,password_hash,created_at) values('", name)
+  let q1 = str.concat(q0, "','")
+  let q2 = str.concat(q1, email)
+  let q3 = str.concat(q2, "','")
+  let q4 = str.concat(q3, hash)
+  let q5 = str.concat(q4, "','")
+  let q6 = str.concat(q5, time.now_iso())
+  let q7 = str.concat(q6, "')")
+  sqlite.exec(db_path, q7)
+}
+
+export fn find_by_email(db_path: str, email: str) -> str {
+  let q0 = str.concat("select id,name,email,password_hash from users where email='", email)
+  let q1 = str.concat(q0, "' limit 1")
+  sqlite.query(db_path, q1)
+}
+
+export fn password_hash_by_email(db_path: str, email: str) -> str {
+  let q0 = str.concat("select password_hash from users where email='", email)
+  let q1 = str.concat(q0, "' limit 1")
+  sqlite.query(db_path, q1)
+}

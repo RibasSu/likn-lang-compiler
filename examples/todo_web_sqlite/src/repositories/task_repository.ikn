@@ -1,0 +1,38 @@
+import database.sqlite
+import utils.time
+
+export fn insert(db_path: str, user_id: int, title: str, description: str) -> () {
+  let q0 = str.concat("insert into tasks(user_id,title,description,completed,created_at,updated_at) values(", str.from_int(user_id))
+  let q1 = str.concat(q0, ", '")
+  let q2 = str.concat(q1, title)
+  let q3 = str.concat(q2, "', '")
+  let q4 = str.concat(q3, description)
+  let q5 = str.concat(q4, "', 0, '")
+  let q6 = str.concat(q5, time.now_iso())
+  let q7 = str.concat(q6, "', '")
+  let q8 = str.concat(q7, time.now_iso())
+  let q9 = str.concat(q8, "')")
+  sqlite.exec(db_path, q9)
+}
+
+export fn list_by_user(db_path: str, user_id: int) -> str {
+  let q0 = str.concat("select id,title,description,completed from tasks where user_id=", str.from_int(user_id))
+  let q1 = str.concat(q0, " order by id desc")
+  sqlite.query(db_path, q1)
+}
+
+export fn toggle(db_path: str, user_id: int, task_id: int) -> () {
+  let q0 = str.concat("update tasks set completed = case completed when 0 then 1 else 0 end, updated_at='", time.now_iso())
+  let q1 = str.concat(q0, "' where id=")
+  let q2 = str.concat(q1, str.from_int(task_id))
+  let q3 = str.concat(q2, " and user_id=")
+  let q4 = str.concat(q3, str.from_int(user_id))
+  sqlite.exec(db_path, q4)
+}
+
+export fn delete(db_path: str, user_id: int, task_id: int) -> () {
+  let q0 = str.concat("delete from tasks where id=", str.from_int(task_id))
+  let q1 = str.concat(q0, " and user_id=")
+  let q2 = str.concat(q1, str.from_int(user_id))
+  sqlite.exec(db_path, q2)
+}

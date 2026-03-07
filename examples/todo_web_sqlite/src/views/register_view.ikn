@@ -1,0 +1,10 @@
+import html
+import views.layout
+
+export fn render(error: str) -> str {
+  let h0 = html.h1("Cadastro")
+  let h1 = html.p(error)
+  let h2 = "<form method=\"post\" action=\"/register\"><input name=\"name\" /><input name=\"email\" /><input name=\"password\" type=\"password\" /><button>Criar conta</button></form>"
+  let body = str.concat(h0, str.concat(h1, h2))
+  layout.render("Cadastro", body)
+}

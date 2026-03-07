@@ -1,0 +1,7 @@
+export fn make(id: int, name: str, email: str) -> str {
+  let p0 = str.concat("id=", str.from_int(id))
+  let p1 = str.concat(p0, ";name=")
+  let p2 = str.concat(p1, name)
+  let p3 = str.concat(p2, ";email=")
+  str.concat(p3, email)
+}

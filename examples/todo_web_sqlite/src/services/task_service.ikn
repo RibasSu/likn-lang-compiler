@@ -1,0 +1,18 @@
+import config.app
+import repositories.task_repository
+
+export fn create_task(user_id: int, title: str, description: str) -> () {
+  task_repository.insert(app.app_db_path(), user_id, title, description)
+}
+
+export fn list_tasks(user_id: int) -> str {
+  task_repository.list_by_user(app.app_db_path(), user_id)
+}
+
+export fn toggle_task(user_id: int, task_id: int) -> () {
+  task_repository.toggle(app.app_db_path(), user_id, task_id)
+}
+
+export fn delete_task(user_id: int, task_id: int) -> () {
+  task_repository.delete(app.app_db_path(), user_id, task_id)
+}

@@ -1,0 +1,6 @@
+import views.layout
+
+export fn render_new() -> str {
+  let body = "<h1>Nova tarefa</h1><form method=\"post\" action=\"/tasks\"><input name=\"title\" /><textarea name=\"description\"></textarea><button>Salvar</button></form>"
+  layout.render("Nova tarefa", body)
+}

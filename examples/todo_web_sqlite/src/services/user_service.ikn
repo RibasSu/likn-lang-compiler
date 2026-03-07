@@ -1,0 +1,6 @@
+import config.app
+import repositories.user_repository
+
+export fn profile_by_email(email: str) -> str {
+  user_repository.find_by_email(app.app_db_path(), email)
+}

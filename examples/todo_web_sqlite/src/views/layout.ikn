@@ -1,0 +1,5 @@
+import html
+
+export fn render(title: str, body: str) -> str {
+  html.page(title, body)
+}

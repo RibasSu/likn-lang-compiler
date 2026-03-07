@@ -1,0 +1,18 @@
+import database.sqlite
+
+export fn run(db_path: str) -> () {
+  sqlite.exec(
+    db_path,
+    "create table if not exists users(id integer primary key autoincrement, name text not null, email text not null unique, password_hash text not null, created_at text not null)"
+  )
+
+  sqlite.exec(
+    db_path,
+    "create table if not exists tasks(id integer primary key autoincrement, user_id integer not null, title text not null, description text, completed integer not null default 0, created_at text not null, updated_at text not null)"
+  )
+
+  sqlite.exec(
+    db_path,
+    "create table if not exists sessions(id integer primary key autoincrement, user_id integer not null, token text not null unique, created_at text not null, expires_at text not null)"
+  )
+}

@@ -1,0 +1,5 @@
+import auth.auth_guard
+
+export fn require_auth(session_token: str) -> bool {
+  auth_guard.is_authenticated(session_token)
+}

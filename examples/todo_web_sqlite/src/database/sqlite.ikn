@@ -1,0 +1,9 @@
+import sqlite
+
+export fn exec(db_path: str, sql: str) -> () {
+  sqlite.exec(db_path, sql)
+}
+
+export fn query(db_path: str, sql: str) -> str {
+  sqlite.query(db_path, sql)
+}

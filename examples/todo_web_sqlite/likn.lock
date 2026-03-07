@@ -1,0 +1,25 @@
+[[package]]
+name = "crypto"
+version = "0.1.0"
+source = "github:RibasSu/lib-likn-lang"
+
+[[package]]
+name = "html"
+version = "0.1.0"
+source = "github:RibasSu/lib-likn-lang"
+
+[[package]]
+name = "session"
+version = "0.1.0"
+source = "github:RibasSu/lib-likn-lang"
+
+[[package]]
+name = "sqlite"
+version = "0.1.0"
+source = "github:RibasSu/lib-likn-lang"
+
+[[package]]
+name = "web"
+version = "0.1.0"
+source = "github:RibasSu/lib-likn-lang"
+

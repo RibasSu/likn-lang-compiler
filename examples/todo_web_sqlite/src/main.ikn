@@ -1,0 +1,13 @@
+import config.app
+import database.migrations
+import web.router
+import web.server
+
+fn main() {
+  let db_path = app.app_db_path()
+  migrations.run(db_path)
+  router.register_routes()
+  server.start(app.app_port())
+}
+
+main()

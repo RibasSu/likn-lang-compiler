@@ -1,0 +1,5 @@
+import web.response
+
+export fn home() -> str {
+  response.redirect_to("/dashboard")
+}

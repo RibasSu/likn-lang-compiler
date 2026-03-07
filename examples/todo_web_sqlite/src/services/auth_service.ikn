@@ -1,0 +1,28 @@
+import auth.password
+import auth.session_manager
+import config.app
+import repositories.user_repository
+import utils.validation
+
+export fn register_user(name: str, email: str, raw_password: str) -> str {
+  if validation.invalid_email(email) {
+    return "invalid_email"
+  }
+  let db_path = app.app_db_path()
+  user_repository.insert(db_path, name, email, raw_password)
+  "ok"
+}
+
+export fn login_user(email: str, raw_password: str) -> str {
+  let db_path = app.app_db_path()
+  let expected = user_repository.password_hash_by_email(db_path, email)
+  if password.verify(raw_password, expected) {
+    return session_manager.create(db_path, 1)
+  }
+  ""
+}
+
+export fn logout_user(token: str) -> () {
+  let db_path = app.app_db_path()
+  session_manager.destroy(db_path, token)
+}

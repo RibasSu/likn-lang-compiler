@@ -1,0 +1,14 @@
+import config.app
+import repositories.session_repository
+
+export fn create(db_path: str, user_id: int) -> str {
+  session_repository.create(db_path, user_id, app.session_expires_at())
+}
+
+export fn current_user_id(db_path: str, token: str) -> str {
+  session_repository.user_id_by_token(db_path, token)
+}
+
+export fn destroy(db_path: str, token: str) -> () {
+  session_repository.destroy(db_path, token)
+}

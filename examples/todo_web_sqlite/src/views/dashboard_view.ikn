@@ -1,0 +1,10 @@
+import html
+import views.layout
+
+export fn render(user_name: str, tasks_html: str) -> str {
+  let title = str.concat("Tarefas de ", user_name)
+  let h0 = html.h1(title)
+  let h1 = html.link("/tasks/new", "Nova tarefa")
+  let body = str.concat(h0, str.concat(h1, tasks_html))
+  layout.render("Dashboard", body)
+}

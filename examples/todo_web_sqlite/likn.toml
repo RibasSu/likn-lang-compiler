@@ -1,0 +1,10 @@
+name = "todo_app"
+version = "0.1.0"
+type = "bin"
+
+[dependencies]
+web = "0.1.0"
+sqlite = "0.1.0"
+html = "0.1.0"
+crypto = "0.1.0"
+session = "0.1.0"

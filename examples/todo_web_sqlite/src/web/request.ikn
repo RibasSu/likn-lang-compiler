@@ -1,0 +1,7 @@
+export fn body_or_empty(body: str) -> str {
+  body
+}
+
+export fn token_or_empty(token: str) -> str {
+  token
+}

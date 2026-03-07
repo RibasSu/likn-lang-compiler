@@ -1,0 +1,9 @@
+export fn make(id: int, user_id: int, title: str, completed: bool) -> str {
+  let p0 = str.concat("id=", str.from_int(id))
+  let p1 = str.concat(p0, ";user_id=")
+  let p2 = str.concat(p1, str.from_int(user_id))
+  let p3 = str.concat(p2, ";title=")
+  let p4 = str.concat(p3, title)
+  let p5 = str.concat(p4, ";completed=")
+  str.concat(p5, str.from_bool(completed))
+}

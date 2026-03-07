@@ -1,0 +1,11 @@
+export fn users_columns() -> str {
+  "id,name,email,password_hash,created_at"
+}
+
+export fn tasks_columns() -> str {
+  "id,user_id,title,description,completed,created_at,updated_at"
+}
+
+export fn sessions_columns() -> str {
+  "id,user_id,token,created_at,expires_at"
+}

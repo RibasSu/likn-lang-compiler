@@ -1,0 +1,7 @@
+export fn ok(value: str) -> str {
+  str.concat("ok:", value)
+}
+
+export fn err(value: str) -> str {
+  str.concat("err:", value)
+}

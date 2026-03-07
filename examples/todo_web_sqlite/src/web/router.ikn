@@ -1,0 +1,16 @@
+import web
+
+export fn register_routes() -> () {
+  web.get("/", "home_controller.home")
+  web.get("/login", "auth_controller.login_page")
+  web.post("/login", "auth_controller.login_submit")
+  web.get("/register", "auth_controller.register_page")
+  web.post("/register", "auth_controller.register_submit")
+  web.post("/logout", "auth_controller.logout")
+
+  web.get("/dashboard", "task_controller.dashboard")
+  web.get("/tasks/new", "task_controller.new_task_page")
+  web.post("/tasks", "task_controller.create_task")
+  web.post("/tasks/toggle", "task_controller.toggle_task")
+  web.post("/tasks/delete", "task_controller.delete_task")
+}

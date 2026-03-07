@@ -1,0 +1,17 @@
+import session
+
+export fn setup(db_path: str) -> () {
+  session.setup(db_path)
+}
+
+export fn create(db_path: str, user_id: int, expires_at: str) -> str {
+  session.create(db_path, user_id, expires_at)
+}
+
+export fn user_id_by_token(db_path: str, token: str) -> str {
+  session.user_id_by_token(db_path, token)
+}
+
+export fn destroy(db_path: str, token: str) -> () {
+  session.destroy(db_path, token)
+}

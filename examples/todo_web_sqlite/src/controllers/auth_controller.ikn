@@ -1,0 +1,33 @@
+import services.auth_service
+import views.login_view
+import views.register_view
+import web.response
+
+export fn login_page() -> str {
+  response.html_page(login_view.render(""))
+}
+
+export fn login_submit() -> str {
+  let token = auth_service.login_user("demo@example.com", "123456")
+  if token == "" {
+    return response.html_page(login_view.render("credenciais inválidas"))
+  }
+  response.redirect_to("/dashboard")
+}
+
+export fn register_page() -> str {
+  response.html_page(register_view.render(""))
+}
+
+export fn register_submit() -> str {
+  let result = auth_service.register_user("Demo", "demo@example.com", "123456")
+  if result != "ok" {
+    return response.html_page(register_view.render(result))
+  }
+  response.redirect_to("/login")
+}
+
+export fn logout() -> str {
+  auth_service.logout_user("")
+  response.redirect_to("/login")
+}

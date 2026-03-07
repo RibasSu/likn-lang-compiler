@@ -1,0 +1,7 @@
+export fn make(token: str, user_id: int, expires_at: str) -> str {
+  let p0 = str.concat("token=", token)
+  let p1 = str.concat(p0, ";user_id=")
+  let p2 = str.concat(p1, str.from_int(user_id))
+  let p3 = str.concat(p2, ";expires_at=")
+  str.concat(p3, expires_at)
+}

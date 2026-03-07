@@ -1,0 +1,9 @@
+import web
+
+export fn html_page(body: str) -> str {
+  web.html(body)
+}
+
+export fn redirect_to(path: str) -> str {
+  web.redirect(path)
+}
