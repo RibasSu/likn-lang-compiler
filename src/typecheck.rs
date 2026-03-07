@@ -729,6 +729,98 @@ impl TypeChecker {
                 self.expect_string_like(value, args[0].span, "str.len espera string")?;
                 Ok(Type::Usize)
             }
+            "str.concat" => {
+                self.expect_arity(name, args, 2, span)?;
+                let left = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(left, args[0].span, "str.concat espera string no primeiro argumento")?;
+                let right = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(right, args[1].span, "str.concat espera string no segundo argumento")?;
+                Ok(Type::String)
+            }
+            "str.from_int" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_integer(value, args[0].span, "str.from_int espera tipo inteiro")?;
+                Ok(Type::String)
+            }
+            "str.from_bool" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.unify(Type::Bool, value, args[0].span, "str.from_bool espera bool")?;
+                Ok(Type::String)
+            }
+            "sqlite.exec" => {
+                self.expect_arity(name, args, 2, span)?;
+                let db_path = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(db_path, args[0].span, "sqlite.exec espera caminho string")?;
+                let sql = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(sql, args[1].span, "sqlite.exec espera SQL string")?;
+                Ok(Type::Unit)
+            }
+            "sqlite.query" => {
+                self.expect_arity(name, args, 2, span)?;
+                let db_path = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(db_path, args[0].span, "sqlite.query espera caminho string")?;
+                let sql = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(sql, args[1].span, "sqlite.query espera SQL string")?;
+                Ok(Type::String)
+            }
+            "crypto.sha256" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "crypto.sha256 espera string")?;
+                Ok(Type::String)
+            }
+            "crypto.verify_sha256" => {
+                self.expect_arity(name, args, 2, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "crypto.verify_sha256 espera string no primeiro argumento")?;
+                let hash = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(hash, args[1].span, "crypto.verify_sha256 espera hash string no segundo argumento")?;
+                Ok(Type::Bool)
+            }
+            "crypto.random_token" => {
+                self.expect_arity(name, args, 0, span)?;
+                Ok(Type::String)
+            }
+            "html.escape" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "html.escape espera string")?;
+                Ok(Type::String)
+            }
+            "html.page" => {
+                self.expect_arity(name, args, 2, span)?;
+                let title = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(title, args[0].span, "html.page espera título string")?;
+                let body = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(body, args[1].span, "html.page espera body string")?;
+                Ok(Type::String)
+            }
+            "web.start" => {
+                self.expect_arity(name, args, 1, span)?;
+                let port = self.infer_expr(&args[0], env)?;
+                self.expect_integer(port, args[0].span, "web.start espera porta inteira")?;
+                Ok(Type::Unit)
+            }
+            "web.get" | "web.post" => {
+                self.expect_arity(name, args, 2, span)?;
+                let path = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(path, args[0].span, "rota deve ser string")?;
+                let handler = self.infer_expr(&args[1], env)?;
+                self.expect_string_like(handler, args[1].span, "handler deve ser string")?;
+                Ok(Type::Unit)
+            }
+            "web.run" => {
+                self.expect_arity(name, args, 0, span)?;
+                Ok(Type::Unit)
+            }
+            "web.html" | "web.redirect" => {
+                self.expect_arity(name, args, 1, span)?;
+                let value = self.infer_expr(&args[0], env)?;
+                self.expect_string_like(value, args[0].span, "web resposta espera string")?;
+                Ok(Type::String)
+            }
             "panic" => {
                 self.expect_arity(name, args, 1, span)?;
                 let _ = self.infer_expr(&args[0], env)?;
@@ -807,6 +899,21 @@ impl TypeChecker {
             _ => Err(self
                 .err_at_span(span, message)
                 .with_help(format!("tipo recebido: {}", resolved.display_name()))),
+        }
+    }
+
+    fn expect_integer(&mut self, ty: Type, span: Span, message: &str) -> Result<(), CompileError> {
+        let resolved = self.resolve_type(&ty);
+        match resolved {
+            concrete if concrete.is_integer() => Ok(()),
+            Type::Infer(_) => {
+                let integer_ty = self.fresh_infer(InferKind::Integer);
+                self.unify(ty, integer_ty, span, message.to_string())?;
+                Ok(())
+            }
+            other => Err(self
+                .err_at_span(span, message)
+                .with_help(format!("tipo recebido: {}", other.display_name()))),
         }
     }
 

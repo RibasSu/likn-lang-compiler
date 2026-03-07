@@ -1,17 +1,45 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::cli::{BuildProfile, BuildTarget, CliOptions};
 use crate::codegen::compile_program;
 use crate::error::CompileError;
-use crate::module_system::resolve_program;
+use crate::manager::ProjectManager;
+use crate::manifest::load_manifest;
+use crate::module_system::resolve_program_with_dependencies;
+use crate::package::{
+    FsRemoteClient, GithubClient, PackageCache, PackageError, PackageInstaller, RemoteClient,
+    RemotePackageLocator,
+};
 use crate::typecheck::check_program;
 
 #[derive(Debug, Clone)]
 pub struct CompilationArtifacts {
     pub rust_file: String,
     pub output_file: String,
+}
+
+#[derive(Debug, Clone)]
+enum RegistryClient {
+    Fs(FsRemoteClient),
+    Github(GithubClient),
+}
+
+impl RemoteClient for RegistryClient {
+    fn fetch_text(&self, remote_path: &str) -> Result<String, PackageError> {
+        match self {
+            RegistryClient::Fs(client) => client.fetch_text(remote_path),
+            RegistryClient::Github(client) => client.fetch_text(remote_path),
+        }
+    }
+
+    fn fetch_bytes(&self, remote_path: &str) -> Result<Vec<u8>, PackageError> {
+        match self {
+            RegistryClient::Fs(client) => client.fetch_bytes(remote_path),
+            RegistryClient::Github(client) => client.fetch_bytes(remote_path),
+        }
+    }
 }
 
 fn add_profile_flags(command: &mut Command, target: BuildTarget, profile: BuildProfile) {
@@ -62,7 +90,9 @@ fn default_output(stem: &str, target: BuildTarget) -> String {
 }
 
 pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, CompileError> {
-    let resolved = resolve_program(Path::new(&options.input))?;
+    let dependency_roots = resolve_dependency_roots(Path::new(&options.input))?;
+    let resolved =
+        resolve_program_with_dependencies(Path::new(&options.input), dependency_roots)?;
     let type_info = check_program(&resolved.ast).map_err(|err| {
         if resolved.has_imports {
             err
@@ -130,4 +160,94 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
         rust_file,
         output_file,
     })
+}
+
+fn resolve_dependency_roots(input_file: &Path) -> Result<std::collections::BTreeMap<String, PathBuf>, CompileError> {
+    let Some(project_root) = find_project_root(input_file) else {
+        return Ok(std::collections::BTreeMap::new());
+    };
+
+    let manifest_path = project_root.join("likn.toml");
+    let manifest = load_manifest(&manifest_path).map_err(|err| {
+        CompileError::new(
+            format!("falha ao carregar {}: {err}", manifest_path.display()),
+            1,
+            1,
+        )
+    })?;
+
+    if manifest.dependencies.is_empty() {
+        return Ok(std::collections::BTreeMap::new());
+    }
+
+    let cache_root = std::env::var("LIKN_CACHE_DIR")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            std::env::var("HOME")
+                .map(|home| PathBuf::from(home).join(".likn"))
+                .map_err(|_| ())
+        })
+        .map_err(|_| {
+            CompileError::new(
+                "dependências declaradas, mas não foi possível resolver diretório de cache",
+                1,
+                1,
+            )
+            .with_help("defina LIKN_CACHE_DIR ou HOME")
+        })?;
+
+    let client = if let Ok(registry_root) = std::env::var("LIKN_REGISTRY_ROOT") {
+        RegistryClient::Fs(FsRemoteClient::new(registry_root))
+    } else if let Ok(raw_base) = std::env::var("LIKN_REGISTRY_RAW_BASE") {
+        RegistryClient::Github(GithubClient::new(raw_base))
+    } else if let Some(embedded) = find_embedded_registry(&project_root) {
+        RegistryClient::Fs(FsRemoteClient::new(embedded))
+    } else {
+        return Err(CompileError::new(
+            "dependências declaradas, mas nenhuma fonte de registry foi configurada",
+            1,
+            1,
+        )
+        .with_help(
+            "defina LIKN_REGISTRY_ROOT (filesystem) ou LIKN_REGISTRY_RAW_BASE (raw github base url)",
+        ));
+    };
+
+    let cache = PackageCache::new(cache_root);
+    let installer = PackageInstaller::new(client, cache, RemotePackageLocator::default());
+    let manager = ProjectManager::new(installer);
+    let graph = manager.install(&project_root).map_err(|err| {
+        CompileError::new(
+            format!("falha ao instalar dependências do projeto: {err}"),
+            1,
+            1,
+        )
+    })?;
+
+    Ok(graph.dependency_roots())
+}
+
+fn find_project_root(input_file: &Path) -> Option<PathBuf> {
+    let mut current = input_file.parent().map(Path::to_path_buf)?;
+    loop {
+        if current.join("likn.toml").is_file() {
+            return Some(current);
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    None
+}
+
+fn find_embedded_registry(project_root: &Path) -> Option<PathBuf> {
+    let mut current = Some(project_root.to_path_buf());
+    while let Some(dir) = current {
+        let candidate = dir.join("libs/lib-likn-lang");
+        if candidate.join("registry/packages").is_dir() {
+            return Some(candidate);
+        }
+        current = dir.parent().map(Path::to_path_buf);
+    }
+    None
 }

@@ -108,6 +108,175 @@ fn likn_fs_exists(_path: impl AsRef<str>) -> bool {
     panic!("fs.exists não é suportado em wasm32-unknown-unknown")
 }
 
+fn likn_str_concat(a: impl AsRef<str>, b: impl AsRef<str>) -> String {
+    let mut out = String::new();
+    out.push_str(a.as_ref());
+    out.push_str(b.as_ref());
+    out
+}
+
+fn likn_str_from_int(value: i64) -> String {
+    value.to_string()
+}
+
+fn likn_str_from_bool(value: bool) -> String {
+    value.to_string()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn likn_sqlite_exec(path: impl AsRef<str>, sql: impl AsRef<str>) {
+    let output = std::process::Command::new("sqlite3")
+        .arg(path.as_ref())
+        .arg(sql.as_ref())
+        .output()
+        .expect("falha ao executar sqlite3");
+    if !output.status.success() {
+        panic!(
+            "sqlite.exec falhou: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn likn_sqlite_exec(_path: impl AsRef<str>, _sql: impl AsRef<str>) {
+    panic!("sqlite.exec não é suportado em wasm32-unknown-unknown")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn likn_sqlite_query(path: impl AsRef<str>, sql: impl AsRef<str>) -> String {
+    let output = std::process::Command::new("sqlite3")
+        .arg(path.as_ref())
+        .arg(sql.as_ref())
+        .output()
+        .expect("falha ao executar sqlite3");
+    if !output.status.success() {
+        panic!(
+            "sqlite.query falhou: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn likn_sqlite_query(_path: impl AsRef<str>, _sql: impl AsRef<str>) -> String {
+    panic!("sqlite.query não é suportado em wasm32-unknown-unknown")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn likn_crypto_sha256(value: impl AsRef<str>) -> String {
+    use std::io::Write as _;
+
+    let input = value.as_ref();
+    let mut child = std::process::Command::new("sha256sum")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("falha ao executar sha256sum");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin do sha256sum indisponível")
+        .write_all(input.as_bytes())
+        .expect("falha ao escrever entrada do hash");
+    let output = child.wait_with_output().expect("falha ao aguardar sha256sum");
+    if !output.status.success() {
+        panic!(
+            "crypto.sha256 falhou: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.split_whitespace().next().unwrap_or("").to_string()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn likn_crypto_sha256(_value: impl AsRef<str>) -> String {
+    panic!("crypto.sha256 não é suportado em wasm32-unknown-unknown")
+}
+
+fn likn_crypto_verify_sha256(value: impl AsRef<str>, digest: impl AsRef<str>) -> bool {
+    likn_crypto_sha256(value) == digest.as_ref()
+}
+
+fn likn_crypto_random_token() -> String {
+    use std::hash::{Hash, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let tick = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    let seed = format!("{nanos}:{tick}:{}", std::process::id());
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    seed.hash(&mut hasher);
+    let digest = hasher.finish();
+    format!("{:016x}{:016x}", digest, digest.rotate_left(17))
+}
+
+fn likn_html_escape(value: impl AsRef<str>) -> String {
+    value
+        .as_ref()
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn likn_html_page(title: impl AsRef<str>, body: impl AsRef<str>) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title></head><body>{}</body></html>",
+        likn_html_escape(title),
+        body.as_ref()
+    )
+}
+
+#[derive(Clone)]
+struct LiknRoute {
+    method: String,
+    path: String,
+    handler: String,
+}
+
+fn likn_routes() -> &'static std::sync::Mutex<Vec<LiknRoute>> {
+    static ROUTES: std::sync::OnceLock<std::sync::Mutex<Vec<LiknRoute>>> = std::sync::OnceLock::new();
+    ROUTES.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+fn likn_web_register(method: impl AsRef<str>, path: impl AsRef<str>, handler: impl AsRef<str>) {
+    let route = LiknRoute {
+        method: method.as_ref().to_string(),
+        path: path.as_ref().to_string(),
+        handler: handler.as_ref().to_string(),
+    };
+    likn_routes().lock().expect("lock routes").push(route);
+}
+
+fn likn_web_start(port: i64) {
+    likn_print(format!("Likn web server configurado na porta {}", port));
+}
+
+fn likn_web_run() {
+    let routes = likn_routes().lock().expect("lock routes");
+    for route in routes.iter() {
+        likn_print(format!("route {} {} -> {}", route.method, route.path, route.handler));
+    }
+}
+
+fn likn_web_html(body: impl AsRef<str>) -> String {
+    body.as_ref().to_string()
+}
+
+fn likn_web_redirect(location: impl AsRef<str>) -> String {
+    format!("REDIRECT:{}", location.as_ref())
+}
+
 "#;
 
 pub fn compile_program(ast: &[Stmt], target: BuildTarget, type_info: &TypeInfo) -> String {
@@ -385,6 +554,127 @@ fn compile_call(name: &str, args: &[Expr]) -> String {
         "str.len" => {
             if args_code.len() == 1 {
                 format!("({}).chars().count()", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "str.concat" => {
+            if args_code.len() == 2 {
+                format!("likn_str_concat(&{}, &{})", args_code[0], args_code[1])
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "str.from_int" => {
+            if args_code.len() == 1 {
+                format!("likn_str_from_int({} as i64)", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "str.from_bool" => {
+            if args_code.len() == 1 {
+                format!("likn_str_from_bool({})", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "sqlite.exec" => {
+            if args_code.len() == 2 {
+                format!("likn_sqlite_exec(&{}, &{})", args_code[0], args_code[1])
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "sqlite.query" => {
+            if args_code.len() == 2 {
+                format!("likn_sqlite_query(&{}, &{})", args_code[0], args_code[1])
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "crypto.sha256" => {
+            if args_code.len() == 1 {
+                format!("likn_crypto_sha256(&{})", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "crypto.verify_sha256" => {
+            if args_code.len() == 2 {
+                format!(
+                    "likn_crypto_verify_sha256(&{}, &{})",
+                    args_code[0], args_code[1]
+                )
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "crypto.random_token" => {
+            if args_code.is_empty() {
+                "likn_crypto_random_token()".to_string()
+            } else {
+                arity_error_expr(name, 0, args_code.len())
+            }
+        }
+        "html.escape" => {
+            if args_code.len() == 1 {
+                format!("likn_html_escape(&{})", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "html.page" => {
+            if args_code.len() == 2 {
+                format!("likn_html_page(&{}, &{})", args_code[0], args_code[1])
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "web.start" => {
+            if args_code.len() == 1 {
+                format!("likn_web_start({} as i64)", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "web.get" => {
+            if args_code.len() == 2 {
+                format!(
+                    "likn_web_register(\"GET\", &{}, &{})",
+                    args_code[0], args_code[1]
+                )
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "web.post" => {
+            if args_code.len() == 2 {
+                format!(
+                    "likn_web_register(\"POST\", &{}, &{})",
+                    args_code[0], args_code[1]
+                )
+            } else {
+                arity_error_expr(name, 2, args_code.len())
+            }
+        }
+        "web.run" => {
+            if args_code.is_empty() {
+                "likn_web_run()".to_string()
+            } else {
+                arity_error_expr(name, 0, args_code.len())
+            }
+        }
+        "web.html" => {
+            if args_code.len() == 1 {
+                format!("likn_web_html(&{})", args_code[0])
+            } else {
+                arity_error_expr(name, 1, args_code.len())
+            }
+        }
+        "web.redirect" => {
+            if args_code.len() == 1 {
+                format!("likn_web_redirect(&{})", args_code[0])
             } else {
                 arity_error_expr(name, 1, args_code.len())
             }

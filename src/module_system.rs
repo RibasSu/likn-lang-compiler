@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,25 +45,34 @@ struct NamespaceMap {
 
 struct ModuleLoader {
     root_dir: PathBuf,
+    dependency_roots: BTreeMap<String, PathBuf>,
     modules: HashMap<String, ModuleUnit>,
     states: HashMap<String, VisitState>,
     load_order: Vec<String>,
 }
 
 pub fn resolve_program(entry_file: &Path) -> Result<ResolvedProgram, CompileError> {
+    resolve_program_with_dependencies(entry_file, BTreeMap::new())
+}
+
+pub fn resolve_program_with_dependencies(
+    entry_file: &Path,
+    dependency_roots: BTreeMap<String, PathBuf>,
+) -> Result<ResolvedProgram, CompileError> {
     let root_dir = entry_file
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let mut loader = ModuleLoader::new(root_dir);
+    let mut loader = ModuleLoader::new(root_dir, dependency_roots);
     loader.load_entry(entry_file)?;
     loader.build_program()
 }
 
 impl ModuleLoader {
-    fn new(root_dir: PathBuf) -> Self {
+    fn new(root_dir: PathBuf, dependency_roots: BTreeMap<String, PathBuf>) -> Self {
         Self {
             root_dir,
+            dependency_roots,
             modules: HashMap::new(),
             states: HashMap::new(),
             load_order: Vec::new(),
@@ -433,6 +442,10 @@ impl ModuleLoader {
             || name.starts_with("term.")
             || name.starts_with("fs.")
             || name.starts_with("str.")
+            || name.starts_with("sqlite.")
+            || name.starts_with("crypto.")
+            || name.starts_with("html.")
+            || name.starts_with("web.")
         {
             return Ok(name.to_string());
         }
@@ -508,8 +521,22 @@ impl ModuleLoader {
     }
 
     fn path_for_module(&self, module_path: &str) -> PathBuf {
+        let segments = module_path.split('.').collect::<Vec<_>>();
         let relative = module_path.replace('.', "/");
-        self.root_dir.join(format!("{relative}.ikn"))
+        let local_path = self.root_dir.join(format!("{relative}.ikn"));
+        if local_path.is_file() {
+            return local_path;
+        }
+
+        if let Some(dep_root) = self.dependency_roots.get(segments[0]) {
+            if segments.len() == 1 {
+                return dep_root.join("src/lib.ikn");
+            }
+            let dep_relative = segments[1..].join("/");
+            return dep_root.join(format!("src/{dep_relative}.ikn"));
+        }
+
+        local_path
     }
 }
 

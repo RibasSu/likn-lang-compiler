@@ -73,17 +73,32 @@ pub fn parse_manifest(content: &str) -> Result<Manifest, ManifestError> {
             continue;
         };
         let key = parse_key(raw_key.trim());
-        let value = parse_string_value(raw_value.trim())
-            .ok_or_else(|| ManifestError::new(format!("valor inválido para chave '{key}'")))?;
-
         match section.as_deref() {
             Some("dependencies") => {
+                let value = parse_string_value(raw_value.trim()).ok_or_else(|| {
+                    ManifestError::new(format!("valor inválido para chave '{key}'"))
+                })?;
                 dependencies.insert(key, value);
             }
             _ => match key.as_str() {
-                "name" => name = Some(value),
-                "version" => version = Some(value),
-                "type" => package_type = Some(parse_package_type(&value)?),
+                "name" => {
+                    let value = parse_string_value(raw_value.trim()).ok_or_else(|| {
+                        ManifestError::new(format!("valor inválido para chave '{key}'"))
+                    })?;
+                    name = Some(value);
+                }
+                "version" => {
+                    let value = parse_string_value(raw_value.trim()).ok_or_else(|| {
+                        ManifestError::new(format!("valor inválido para chave '{key}'"))
+                    })?;
+                    version = Some(value);
+                }
+                "type" => {
+                    let value = parse_string_value(raw_value.trim()).ok_or_else(|| {
+                        ManifestError::new(format!("valor inválido para chave '{key}'"))
+                    })?;
+                    package_type = Some(parse_package_type(&value)?);
+                }
                 _ => {}
             },
         }
@@ -168,4 +183,47 @@ pub fn validate_version(version: &str) -> Result<(), ManifestError> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PackageType, parse_manifest};
+
+    #[test]
+    fn parse_ignores_unknown_non_string_fields() {
+        let manifest = parse_manifest(
+            r#"
+name = "hub"
+version = "0.1.0"
+type = "hub"
+
+[workspace]
+members = [
+  "packages/a",
+  "packages/b"
+]
+"#,
+        )
+        .expect("manifest should parse");
+
+        assert_eq!(manifest.name, "hub");
+        assert_eq!(manifest.version, "0.1.0");
+        assert_eq!(manifest.package_type, PackageType::Hub);
+    }
+
+    #[test]
+    fn parse_rejects_non_string_dependency_value() {
+        let err = parse_manifest(
+            r#"
+name = "app"
+version = "0.1.0"
+type = "bin"
+
+[dependencies]
+mathx = 1
+"#,
+        )
+        .expect_err("manifest should fail");
+        assert!(err.to_string().contains("valor inválido para chave 'mathx'"));
+    }
 }
