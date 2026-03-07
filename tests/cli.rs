@@ -318,3 +318,45 @@ print(type)
     let _ = fs::remove_file(&output);
     let _ = fs::remove_file(&rust_file);
 }
+
+#[test]
+fn cli_accepts_python_style_keywords_and_comments() {
+    let source = unique_path("ikn");
+    let output = unique_path("bin");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+# comentário Python
+def calc(v: i64) -> i64: {
+  if v > 10 and not false: {
+    return v
+  } elif v > 5: {
+    return v + 1
+  } else: {
+    return v + 2
+  }
+}
+
+print(calc(7))
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(
+        compile.status.success(),
+        "compiler should accept python-like aliases"
+    );
+
+    let run = Command::new(&output).output().expect("run compiled binary");
+    assert!(run.status.success(), "binary should execute");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(stdout.contains("8"), "result should be computed");
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}

@@ -30,7 +30,7 @@ impl Parser {
         if self.match_ident("const") {
             return self.parse_const();
         }
-        if self.match_ident("fn") {
+        if self.match_ident("fn") || self.match_ident("def") {
             return self.parse_func();
         }
         if self.match_ident("if") {
@@ -134,7 +134,7 @@ impl Parser {
             None
         };
 
-        self.expect_symbol("{", "'{' após assinatura da função")?;
+        self.expect_block_open("'{' após assinatura da função")?;
         let body = self.parse_block()?;
 
         Ok(Stmt {
@@ -150,12 +150,18 @@ impl Parser {
 
     fn parse_if(&mut self) -> Result<Stmt, CompileError> {
         let start = self.previous_span();
+        self.parse_if_tail(start)
+    }
+
+    fn parse_if_tail(&mut self, start: Span) -> Result<Stmt, CompileError> {
         let cond = self.parse_expr()?;
-        self.expect_symbol("{", "'{' após condição do if")?;
+        self.expect_block_open("'{' após condição do if/elif")?;
         let then_block = self.parse_block()?;
 
-        let else_block = if self.match_ident("else") {
-            self.expect_symbol("{", "'{' após else")?;
+        let else_block = if self.match_ident("elif") {
+            vec![self.parse_if_tail(self.previous_span())?]
+        } else if self.match_ident("else") {
+            self.expect_block_open("'{' após else")?;
             self.parse_block()?
         } else {
             Vec::new()
@@ -289,6 +295,15 @@ impl Parser {
             });
         }
 
+        if self.match_ident("not") {
+            let op = self.previous_token().clone();
+            let expr = self.parse_unary()?;
+            return Ok(Expr {
+                span: span_from_token(&op),
+                kind: ExprKind::UnaryOp("!".to_string(), Box::new(expr)),
+            });
+        }
+
         self.parse_primary()
     }
 
@@ -414,13 +429,28 @@ impl Parser {
 
     fn current_binary_op(&self) -> Option<Token> {
         let tok = self.peek();
-        if tok.kind != TokenKind::Symbol {
-            return None;
+        if tok.kind == TokenKind::Symbol && precedence(&tok.lexeme) != 0 {
+            return Some(tok.clone());
         }
-        if precedence(&tok.lexeme) == 0 {
-            return None;
+        if tok.kind == TokenKind::Ident {
+            let mapped = match tok.lexeme.as_str() {
+                "and" => Some("&&"),
+                "or" => Some("||"),
+                _ => None,
+            }?;
+            return Some(Token {
+                kind: TokenKind::Symbol,
+                lexeme: mapped.to_string(),
+                line: tok.line,
+                column: tok.column,
+            });
         }
-        Some(tok.clone())
+        None
+    }
+
+    fn expect_block_open(&mut self, context: &str) -> Result<(), CompileError> {
+        let _ = self.match_symbol(":");
+        self.expect_symbol("{", context)
     }
 
     fn consume_optional_semicolon(&mut self) {

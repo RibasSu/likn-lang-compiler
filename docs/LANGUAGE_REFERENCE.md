@@ -8,9 +8,10 @@ Um arquivo `.ikn` é uma sequência de statements.
 
 Statements suportados:
 - `let`
+- `const`
 - expressão livre
 - `if` / `else`
-- `fn`
+- `fn` / `def`
 - `return`
 - `print`
 
@@ -87,6 +88,7 @@ Resultado semântico: `1 + (2 * 3)`.
 
 - `-expr`
 - `!expr`
+- `not expr` (alias)
 
 ```ikn
 print -10
@@ -111,6 +113,20 @@ A biblioteca padrão usa chamadas com `.`:
 let texto = fs.read("dados.txt")
 let nome = term.input("Nome: ")
 term.println(nome)
+```
+
+## 3.5 Operadores textuais (aliases Python)
+
+- `and` -> `&&`
+- `or` -> `||`
+- `not` -> `!`
+
+Exemplo:
+
+```ikn
+if ativo and not bloqueado {
+  print("ok")
+}
 ```
 
 ## 4. Statements
@@ -210,6 +226,13 @@ Comentários de linha iniciam com `//`:
 let x = 1
 ```
 
+Também é aceito comentário estilo Python com `#`:
+
+```ikn
+# comentário
+let x = 1
+```
+
 ## 6. Delimitadores
 
 Ponto e vírgula (`;`) é opcional para statements.
@@ -217,6 +240,14 @@ Ponto e vírgula (`;`) é opcional para statements.
 ```ikn
 let x = 1;
 print(x);
+```
+
+Blocos continuam com `{}` (estilo JavaScript). Para legibilidade estilo Python, `:` antes de `{` é opcional:
+
+```ikn
+def soma(a: i64, b: i64) -> i64: {
+  return a + b
+}
 ```
 
 ## 7. Erros e diagnóstico

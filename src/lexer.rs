@@ -34,6 +34,11 @@ impl<'a> Lexer<'a> {
                 continue;
             }
 
+            if ch == '#' {
+                self.consume_comment();
+                continue;
+            }
+
             if ch.is_ascii_digit() {
                 tokens.push(self.lex_number()?);
                 continue;

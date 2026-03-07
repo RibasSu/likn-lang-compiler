@@ -16,6 +16,7 @@ Esta pasta contem exemplos completos da linguagem Likn.
 10. `10_aliases_namespace.ikn`
 11. `11_fluxo_completo_relatorio.ikn`
 12. `12_web_ready_basico.ikn`
+13. `13_python_js_hybrid.ikn`
 
 Para compilar um exemplo:
 

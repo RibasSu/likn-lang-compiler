@@ -172,6 +172,29 @@ mod tests {
     }
 
     #[test]
+    fn supports_python_like_keywords_with_js_blocks() {
+        let src = r#"
+            # comentário estilo Python
+            def score(x: i64) -> i64: {
+                if x > 10 and not false: {
+                    return x
+                } elif x > 5: {
+                    return x + 1
+                } else: {
+                    return x + 2
+                }
+            }
+            print(score(7))
+        "#;
+        let ast = parse_source(src).expect("parse");
+        let types = check_program(&ast).expect("tipagem");
+        let compiled = compile_program(&ast, BuildTarget::Native, &types);
+        assert!(compiled.contains("fn score(x: i64) -> i64"));
+        assert!(compiled.contains("if ((x > 10) && (!false))"));
+        assert!(compiled.contains("else"));
+    }
+
+    #[test]
     fn diagnostic_renders_with_source_snippet() {
         let src = "print(\"abc";
         let err = parse_source(src)

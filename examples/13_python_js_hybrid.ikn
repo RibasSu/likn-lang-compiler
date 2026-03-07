@@ -1,0 +1,14 @@
+# Sintaxe simples estilo Python, blocos estilo JavaScript
+
+def decidir(v: i64) -> i64: {
+  if v > 10 and not false: {
+    return v
+  } elif v > 5: {
+    return v + 1
+  } else: {
+    return v + 2
+  }
+}
+
+let resultado = decidir(7)
+print(resultado)
