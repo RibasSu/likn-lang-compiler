@@ -129,6 +129,42 @@ fn cli_builds_web_wasm_when_target_exists() {
 }
 
 #[test]
+fn cli_builds_llvm_ir_file() {
+    let source = unique_path("ikn");
+    let output = unique_path("ll");
+    let rust_file = generated_rust_file(&source);
+    let program = r#"
+fn dobro(v: i64) -> i64 {
+  return v * 2
+}
+
+let x = dobro(21)
+print(x)
+"#;
+    fs::write(&source, program).expect("write source");
+
+    let compile = Command::new(compiler_bin())
+        .arg("--target")
+        .arg("llvm")
+        .arg(source.as_os_str())
+        .arg("--output")
+        .arg(output.as_os_str())
+        .output()
+        .expect("run compiler");
+    assert!(compile.status.success(), "llvm generation should succeed");
+    assert!(output.exists(), "llvm output should exist");
+
+    let ir = fs::read_to_string(&output).expect("read llvm output");
+    assert!(ir.contains("; === Likn Compiled Module ==="));
+    assert!(ir.contains("define i64 @likn_main()"));
+    assert!(ir.contains("declare void @likn_print(i8*)"));
+
+    let _ = fs::remove_file(&source);
+    let _ = fs::remove_file(&output);
+    let _ = fs::remove_file(&rust_file);
+}
+
+#[test]
 fn cli_stdlib_fs_and_terminal_io_work() {
     let source = unique_path("ikn");
     let output = unique_path("bin");

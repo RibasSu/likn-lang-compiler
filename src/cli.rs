@@ -2,6 +2,7 @@
 pub enum BuildTarget {
     Native,
     Web,
+    Llvm,
 }
 
 impl BuildTarget {
@@ -9,6 +10,7 @@ impl BuildTarget {
         match value {
             "native" => Some(Self::Native),
             "web" | "wasm" => Some(Self::Web),
+            "llvm" | "ir" => Some(Self::Llvm),
             _ => None,
         }
     }
@@ -17,6 +19,7 @@ impl BuildTarget {
         match self {
             BuildTarget::Native => "native",
             BuildTarget::Web => "web",
+            BuildTarget::Llvm => "llvm",
         }
     }
 }
@@ -69,7 +72,7 @@ pub fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
                     return Err("faltou valor para --target".to_string());
                 };
                 target = BuildTarget::from_cli(value)
-                    .ok_or_else(|| format!("target inválido: '{value}' (use native ou web)"))?;
+                    .ok_or_else(|| format!("target inválido: '{value}' (use native, web ou llvm)"))?;
             }
             "--profile" => {
                 i += 1;
@@ -88,6 +91,9 @@ pub fn parse_cli(args: &[String]) -> Result<CliOptions, String> {
             }
             "--web" => {
                 target = BuildTarget::Web;
+            }
+            "--llvm" => {
+                target = BuildTarget::Llvm;
             }
             "--fast" => {
                 profile = BuildProfile::Fast;
@@ -129,8 +135,9 @@ pub fn print_help(bin: &str) {
     println!();
     println!("Flags:");
     println!("  --help, -h            Exibe esta ajuda");
-    println!("  --target <native|web> Define o alvo de build");
+    println!("  --target <native|web|llvm> Define o alvo de build");
     println!("  --web                 Atalho para --target web");
+    println!("  --llvm                Atalho para --target llvm");
     println!("  --profile <dev|fast>  Define o perfil de otimização");
     println!("  --fast                Atalho para --profile fast");
     println!("  --output, -o <path>   Define o arquivo de saída");

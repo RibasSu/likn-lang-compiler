@@ -5,6 +5,7 @@ pub mod compiler;
 pub mod error;
 pub mod lexer;
 pub mod lockfile;
+pub mod llvm_codegen;
 pub mod manager;
 pub mod manifest;
 pub mod module_resolver;
@@ -41,7 +42,7 @@ pub fn run(args: &[String]) -> i32 {
 
     match compile_file(&options) {
         Ok(artifacts) => {
-            if options.emit_rust {
+            if options.emit_rust && options.target != cli::BuildTarget::Llvm {
                 println!("Arquivo Rust gerado: {}", artifacts.rust_file);
             }
             println!("Artefato final: {}", artifacts.output_file);
@@ -167,6 +168,18 @@ mod tests {
         assert_eq!(options.target, BuildTarget::Web);
         assert_eq!(options.profile, BuildProfile::Fast);
         assert_eq!(options.input, "app.ikn");
+    }
+
+    #[test]
+    fn cli_parser_understands_llvm_target() {
+        let args = vec![
+            "likn".to_string(),
+            "--target".to_string(),
+            "llvm".to_string(),
+            "app.ikn".to_string(),
+        ];
+        let options = parse_cli(&args).expect("deve parsear argumentos");
+        assert_eq!(options.target, BuildTarget::Llvm);
     }
 
     #[test]

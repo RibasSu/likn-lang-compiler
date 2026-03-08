@@ -5,6 +5,7 @@ use std::process::Command;
 use crate::cli::{BuildProfile, BuildTarget, CliOptions};
 use crate::codegen::compile_program;
 use crate::error::CompileError;
+use crate::llvm_codegen::compile_program_to_llvm_ir;
 use crate::manager::ProjectManager;
 use crate::manifest::load_manifest;
 use crate::module_system::resolve_program_with_dependencies;
@@ -82,10 +83,10 @@ fn add_profile_flags(command: &mut Command, target: BuildTarget, profile: BuildP
 }
 
 fn default_output(stem: &str, target: BuildTarget) -> String {
-    if target == BuildTarget::Web {
-        format!("{stem}.wasm")
-    } else {
-        stem.to_string()
+    match target {
+        BuildTarget::Web => format!("{stem}.wasm"),
+        BuildTarget::Llvm => format!("{stem}.ll"),
+        BuildTarget::Native => stem.to_string(),
     }
 }
 
@@ -111,6 +112,23 @@ pub fn compile_file(options: &CliOptions) -> Result<CompilationArtifacts, Compil
         .output
         .clone()
         .unwrap_or_else(|| default_output(stem, options.target));
+
+    if options.target == BuildTarget::Llvm {
+        let llvm_ir = compile_program_to_llvm_ir(&resolved.ast, &type_info, &options.input);
+        fs::write(&output_file, llvm_ir).map_err(|err| {
+            CompileError::new(
+                format!("falha ao escrever arquivo {output_file}: {err}"),
+                1,
+                1,
+            )
+        })?;
+
+        return Ok(CompilationArtifacts {
+            rust_file: String::new(),
+            output_file,
+        });
+    }
+
     let rust_code = compile_program(&resolved.ast, options.target, &type_info);
 
     fs::write(&rust_file, rust_code).map_err(|err| {
